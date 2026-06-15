@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>租房退房登记统计管理系统</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="rental-data.js"></script>
+<style>
+:root {
+  --bg: #f0f2f5; --card-bg: #ffffff; --primary: #4f6ef7; --primary-dark: #3b54d4;
+  --danger: #e74c3c; --success: #27ae60; --warning: #f39c12; --info: #3498db;
+  --text: #2c3e50; --text-light: #7f8c8d; --border: #e8ecf1;
+  --shadow: 0 2px 12px rgba(0,0,0,0.06); --radius: 12px;
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh;
+}
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  color: #fff; padding: 0 32px; height: 64px; display: flex;
+  align-items: center; justify-content: space-between; position: sticky; top: 0;
+  z-index: 100; box-shadow: 0 2px 20px rgba(0,0,0,0.15);
+}
+.header h1 { font-size: 20px; font-weight: 600; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
+.header h1 .icon { font-size: 26px; }
+.header .date-display { font-size: 14px; opacity: 0.85; display: flex; align-items: center; gap: 8px; }
+.header .date-display .l
+ive-dot {
+  width: 8px; height: 8px; background: #2ecc71; border-radius: 50%; animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(46,204,113,0.6)}
+  50%{opacity:0.5;box-shadow:0 0 0 10px rgba(46,204,113,0)}
+}
+
+/* Tab Nav */
+.tab-nav {
+  background: #fff; border-bottom: 1px solid var(--border); padding: 0 24px;
+  display: flex; gap: 4px; position: sticky; top: 64px; z-index: 99;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.tab-btn {
+  padding: 14px 24px; border: none; background: none; font-size: 15px; font-weight: 500;
+  cursor: pointer; color: var(--text-light); font-family: inherit;
+  border-bottom: 3px solid transparent; transition: var(--transition);
+  display: flex; align-items: center; gap: 8px;
+}
+.tab-btn:hover { color: var(--primary); background: #f8f9fd; }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Container */
+.container { max-width: 1520px; margin: 0 auto; padding: 20px 24px 60px; }
+
+/* Alert Banner */
+.alert-banner {
+  background: linear-gradient(135deg, #fff5f5, #fff0f0); border: 1px solid #fecaca;
+  border-radius: var(--radius); padding: 12px 20px; margin-bottom: 18px;
+  display: flex; align-items: center; gap: 10px; animation: alertGlow 3s infinite;
+}
+@keyframes alertGlow {
+  0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,0.15)}
+  50%{box-shadow:0 0 0 8px rgba(231,76,60,0)}
+}
+.alert-banner.hidden { display: none; }
+.alert-banner .alert-icon { font-size: 22px; }
+.alert-banner .alert-text { flex: 1; font-size: 14px; font-weight: 500; color: #991b1b; }
+.alert-banner .alert-count { background: var(--danger); color: #fff; padding: 4px 14px; border-radius: 20px; font-weight: 700; font-size: 14px; }
+
+/* Stats Cards */
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-card {
+  background: var(--card-bg); border-radius: var(--radius); padding: 16px 18px;
+  box-shadow: var(--shadow); display: flex; align-items: center; gap: 12px;
+  transition: var(--transition); cursor: pointer; border: 1px solid var(--border);
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(0,0,0,0.1); }
+.stat-card .stat-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.stat-card .stat-info .stat-num { font-size: 24px; font-weight: 700; line-height: 1.2; }
+.stat-card .stat-info .stat-label { font-size: 11px; color: var(--text-light); margin-top: 1px; }
+.stat-card.total .stat-icon{background:#eef2ff;color:var(--primary)}
+.stat-card.active .stat-icon{background:#e8f8f0;color:var(--success)}
+.stat-card.remind .stat-icon{background:#fff0f5;color:#e91e63}
+.stat-card.urgent .stat-icon{background:#fef3e2;color:var(--warning)}
+.stat-card.expired .stat-icon{background:#fde8e8;color:var(--danger)}
+.stat-card.checked .stat-icon{background:#f0f0f5;color:#636e72}
+.stat-card.renewal .stat-icon{background:#e8f0fe;color:var(--info)}
+.stat-card.remind{border-left:3px solid #e91e63}
+.stat-card.urgent{border-left:3px solid var(--warning)}
+.stat-card.expired{border-left:3px solid var(--danger)}
+
+/* Panel Layout */
+.panel-grid { display: grid; grid-template-columns: 440px 1fr; gap: 18px; margin-bottom: 20px; }
+@media(max-width:1100px){.panel-grid{grid-template-columns:1fr}}
+
+/* Card */
+.card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; }
+.card-header { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.card-body { padding: 18px; }
+
+/* Form */
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input, .form-group textarea, .form-group select {
+  width: 100%; padding: 8px 12px; border: 2px solid var(--border); border-radius: 8px;
+  font-size: 14px; font-family: inherit; transition: var(--transition); background: #fafbfc; color: var(--text);
+}
+.form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+  outline: none; border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(79,110,247,0.1);
+}
+.form-group textarea { resize: vertical; min-height: 55px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form-section { border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 4px; }
+.form-section-title { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+
+/* Buttons */
+.btn { padding: 9px 18px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: var(--transition); font-family: inherit; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary{background:var(--primary);color:#fff} .btn-primary:hover{background:var(--primary-dark);transform:translateY(-1px)}
+.btn-success{background:var(--success);color:#fff} .btn-success:hover{background:#219a52}
+.btn-info{background:var(--info);color:#fff} .btn-info:hover{background:#2980b9}
+.btn-outline{background:#fff;color:var(--primary);border:2px solid var(--primary)} .btn-outline:hover{background:#eef2ff}
+.btn-danger{background:#fff;color:var(--danger);border:2px solid var(--danger)} .btn-danger:hover{background:#fde8e8}
+.btn-warning{background:#fff;color:#b8700a;border:2px solid var(--warning)} .btn-warning:hover{background:#fef3e2}
+.btn-sm{padding:5px 10px;font-size:12px;border-radius:6px}
+.btn-xs{padding:3px 7px;font-size:11px;border-radius:4px}
+.btn-group{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+
+/* Toolbar */
+.toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.toolbar .search-box { flex: 1; min-width: 160px; position: relative; }
+.toolbar .search-box input { width: 100%; padding: 7px 12px 7px 34px; border: 2px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; background: #fafbfc; }
+.toolbar .search-box input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,110,247,0.1); }
+.toolbar .search-box .search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-light); font-size: 14px; }
+.toolbar select { padding: 7px 10px; border: 2px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; background: #fafbfc; cursor: pointer; }
+
+/* Table */
+.table-wrap { overflow-x: auto; max-height: 480px; overflow-y: auto; }
+.table-wrap::-webkit-scrollbar{width:5px;height:5px}
+.table-wrap::-webkit-scrollbar-track{background:transparent}
+.table-wrap::-webkit-scrollbar-thumb{background:#d0d5dd;border-radius:3px}
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead{position:sticky;top:0;z-index:1}
+thead th{background:#f8f9fb;padding:9px 8px;text-align:left;font-weight:600;color:var(--text-light);text-transform:uppercase;font-size:10px;letter-spacing:0.4px;border-bottom:2px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+thead th:hover{background:#eef1f7}
+thead th .sort-arrow{margin-left:2px;font-size:9px}
+tbody td{padding:9px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody tr{transition:background 0.15s}
+tbody tr:hover{background:#f8f9fd}
+tbody tr.row-checked{background:#f9fafb;color:#b0b8c1}
+tbody tr.row-remind{background:#fffbfb}
+tbody tr.row-renewal{border-left:3px solid var(--info)}
+
+/* Badges */
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:0.3px}
+.badge-normal{background:#e8f8f0;color:#1e7e4e}
+.badge-warning{background:#fef3e2;color:#b8700a}
+.badge-remind{background:#fff0f5;color:#c7254e;animation:badgePulse 1.5s infinite}
+.badge-urgent{background:#fde8e8;color:#c0392b;animation:badgePulse 1.8s infinite}
+.badge-expired{background:#f0f0f5;color:#636e72}
+.badge-checked{background:#e8ecf1;color:#95a5a6}
+.badge-vacant{background:#f8f9fb;color:#b0b8c1;border:1px dashed #d0d5dd}
+.badge-reserved{background:#fff0f5;color:#c7254e;border:1px solid #f9a8c9}
+.badge-locked{background:#f0f0f5;color:#636e72;border:1px solid #a0a0b0}
+.badge-renewal{background:#e8f0fe;color:#2471a3}
+.badge-payment{background:#f5f0ff;color:#6c3483;font-size:10px}
+@keyframes badgePulse{0%,100%{opacity:1}50%{opacity:0.55}}
+
+/* Decision badges */
+.badge-recruit{background:#fde8e8;color:#c0392b;animation:badgePulse 1.2s infinite;font-size:12px;padding:4px 12px}
+.badge-watch{background:#fef3e2;color:#b8700a;font-size:12px;padding:4px 12px}
+.badge-ok{background:#e8f8f0;color:#1e7e4e;font-size:12px;padding:4px 12px}
+
+.empty-state{text-align:center;padding:40px 20px;color:var(--text-light)}
+.empty-state .empty-icon{font-size:48px;margin-bottom:12px;opacity:0.4}
+
+/* Charts */
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px}
+.chart-card{background:var(--card-bg);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border);padding:18px}
+.chart-card .chart-title{font-weight:600;font-size:14px;margin-bottom:14px;color:var(--text)}
+.chart-card canvas{max-height:280px}
+
+/* Toast */
+.toast-container{position:fixed;top:80px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{background:#fff;border-radius:8px;padding:12px 20px;box-shadow:0 8px 32px rgba(0,0,0,0.15);font-size:14px;font-weight:500;animation:slideIn 0.3s ease;display:flex;align-items:center;gap:10px;border-left:4px solid var(--primary)}
+.toast.success{border-left-color:var(--success)} .toast.error{border-left-color:var(--danger)} .toast.warn{border-left-color:var(--warning)}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s}
+.modal{background:#fff;border-radius:var(--radius);padding:26px;max-width:540px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.2);max-height:90vh;overflow-y:auto}
+.modal h3{margin-bottom:6px;font-size:17px}
+.modal .modal-subtitle{color:var(--text-light);font-size:12px;margin-bottom:16px}
+.modal p{color:var(--text-light);margin-bottom:14px;font-size:13px;line-height:1.7}
+.modal .btn-group{justify-content:flex-end}
+.info-box{background:#f0f7ff;border:1px solid #b8d8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px}
+.info-box .info-row{display:flex;justify-content:space-between;padding:3px 0}
+.info-box .info-row .info-label{color:var(--text-light)}
+.info-box .info-row .info-value{font-weight:600}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+/* ======================== ANALYTICS STYLES ======================== */
+
+/* Building overview grid */
+.building-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.building-card {
+  background: #fff; border-radius: var(--radius); padding: 16px;
+  box-shadow: var(--shadow); border: 1px solid var(--border);
+  transition: var(--transition);
+}
+.building-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
+.building-card .bc-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+.building-card .bc-name { font-weight: 700; font-size: 15px; }
+.building-card .bc-total { font-size: 11px; color: var(--text-light); }
+.building-card .bc-stats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px;
+  font-size: 12px;
+}
+.building-card .bc-stat { text-align: center; padding: 6px; border-radius: 6px; background: #f8f9fb; }
+.building-card .bc-stat .bc-val { font-size: 20px; font-weight: 700; line-height: 1.2; }
+.building-card .bc-stat .bc-lbl { font-size: 10px; color: var(--text-light); }
+.building-card .bc-stat.occupied .bc-val { color: var(--success); }
+.building-card .bc-stat.vacant .bc-val { color: var(--danger); }
+
+/* Progress bar */
+.progress-bar-wrap { height: 8px; background: #e8ecf1; border-radius: 4px; overflow: hidden; margin-bottom: 4px; }
+.progress-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+.progress-bar-fill.high { background: var(--success); }
+.progress-bar-fill.medium { background: var(--warning); }
+.progress-bar-fill.low { background: var(--danger); }
+.bc-rate { font-size: 12px; font-weight: 600; text-align: right; }
+
+/* Prediction table */
+.prediction-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.prediction-table th { background: #f8f9fb; padding: 10px 14px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; color: var(--text-light); border-bottom: 2px solid var(--border); }
+.prediction-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.prediction-table .highlight-row { background: #fffbfb; }
+
+/* Recommendation card */
+.rec-card {
+  border-radius: var(--radius); padding: 20px 24px; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 16px;
+}
+.rec-card.urgent-rec { background: linear-gradient(135deg, #fff5f5, #fde8e8); border: 2px solid #fecaca; }
+.rec-card.watch-rec { background: linear-gradient(135deg, #fffdf5, #fef3e2); border: 2px solid #fde4b4; }
+.rec-card.ok-rec { background: linear-gradient(135deg, #f5fff8, #e8f8f0); border: 2px solid #b8e6c8; }
+.rec-card .rec-icon { font-size: 36px; flex-shrink: 0; }
+.rec-card .rec-content { flex: 1; }
+.rec-card .rec-content .rec-title { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+.rec-card .rec-content .rec-detail { font-size: 13px; color: var(--text-light); line-height: 1.6; }
+.rec-card .rec-content .rec-rooms { margin-top: 6px; font-size: 12px; color: var(--text); }
+
+/* Section title */
+.section-title {
+  font-size: 15px; font-weight: 700; margin-bottom: 14px; display: flex;
+  align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 2px solid var(--border);
+}
+
+/* Summary table */
+.summary-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.summary-table th { background: #f8f9fb; padding: 10px 12px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; color: var(--text-light); border-bottom: 2px solid var(--border); }
+.summary-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.summary-table tbody tr:hover { background: #f8f9fd; }
+
+@media(max-width:768px){
+  .header{padding:0 14px} .header h1{font-size:15px}
+  .container{padding:14px 10px 40px} .form-row{grid-template-columns:1fr}
+  .building-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+}
+
+/* Tooltip for analytics */
+.has-tooltip { cursor: help; border-bottom: 1px dotted var(--text-light); }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <h1><span class="icon">🏠</span>租房退房登记统计管理系统</h1>
+  <div class="date-display"><span class="live-dot"></span><span id="headerDate"></span></div>
+</header>
+
+<!-- Tab Navigation -->
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="tab-manage">📋 登记管理</button>
+  <button class="tab-btn" data-tab="tab-analytics">📊 数据分析 & 招租决策</button>
+</nav>
+
+<!-- ======================== TAB 1: 登记管理 ======================== -->
+<div class="tab-panel active" id="tab-manage">
+<div class="container">
+
+  <!-- Alert Banner -->
+  <div class="alert-banner hidden" id="alertBanner">
+    <span class="alert-icon">🔔</span><span class="alert-text" id="alertText"></span>
+    <span class="alert-count" id="alertCount">0</span>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card total" data-filter="all"><div class="stat-icon">📋</div><div class="stat-info"><div class="stat-num" id="statTotal">0</div><div class="stat-label">总登记数</div></div></div>
+    <div class="stat-card active" data-filter="active"><div class="stat-icon">✅</div><div class="stat-info"><div class="stat-num" id="statActive">0</div><div class="stat-label">正常入住中</div></div></div>
+    <div class="stat-card remind" data-filter="remind"><div class="stat-icon">🔔</div><div class="stat-info"><div class="stat-num" id="statRemind">0</div><div class="stat-label">15天内到期提醒</div></div></div>
+    <div class="stat-card urgent" data-filter="urgent"><div class="stat-icon">⏰</div><div class="stat-info"><div class="stat-num" id="statUrgent">0</div><div class="stat-label">7天内到期</div></div></div>
+    <div class="stat-card renewal" data-filter="warning" style="border-left:3px solid var(--warning);"><div class="stat-icon" style="background:#fef3e2;color:var(--warning);">📅</div><div class="stat-info"><div class="stat-num" id="statWarning">0</div><div class="stat-label">30天内到期</div></div></div>
+    <div class="stat-card expired" data-filter="expired"><div class="stat-icon">⚠️</div><div class="stat-info"><div class="stat-num" id="statExpired">0</div><div class="stat-label">已超期未退</div></div></div>
+    <div class="stat-card checked" data-filter="checked"><div class="stat-icon">🏁</div><div class="stat-info"><div class="stat-num" id="statChecked">0</div><div class="stat-label">已退房</div></div></div>
+    <div class="stat-card renewal" data-filter="renewal"><div class="stat-icon">🔄</div><div class="stat-info"><div class="stat-num" id="statRenewal">0</div><div class="stat-label">续租记录</div></div></div>
+    <div class="stat-card checked" data-filter="vacant" style="border-left:3px solid #b0b8c1;"><div class="stat-icon" style="background:#f8f9fb;color:#b0b8c1;">📭</div><div class="stat-info"><div class="stat-num" id="statVacant">0</div><div class="stat-label">空置</div></div></div>
+    <div class="stat-card checked" data-filter="reserved" style="border-left:3px solid #e91e63;"><div class="stat-icon" style="background:#fff0f5;color:#e91e63;">🔖</div><div class="stat-info"><div class="stat-num" id="statReserved">0</div><div class="stat-label">已预定</div></div></div>
+    <div class="stat-card checked" data-filter="locked" style="border-left:3px solid #636e72;"><div class="stat-icon" style="background:#f0f0f5;color:#636e72;">🔒</div><div class="stat-info"><div class="stat-num" id="statLocked">0</div><div class="stat-label">已锁定</div></div></div>
+  </div>
+
+  <!-- Form + Table -->
+  <div class="panel-grid">
+    <div class="card" id="formCard">
+      <div class="card-header">📝 <span id="formTitle">新增登记</span><span id="renewalBadge" style="display:none;margin-left:8px" class="badge badge-renewal">续租</span></div>
+      <div class="card-body">
+        <form id="recordForm" autocomplete="off">
+          <input type="hidden" id="recordId"><input type="hidden" id="isRenewal" value="0">
+          <input type="hidden" id="parentRecordId" value=""><input type="hidden" id="renewalSeq" value="0">
+          <div class="form-row">
+            <div class="form-group"><label>🏢 楼栋号</label><input type="text" id="buildingNo" placeholder="如：5幢" required list="buildingList"><datalist id="buildingList"><option value="5幢"><option value="6幢"><option value="12幢"><option value="16幢"><option value="21幢"><option value="26幢"><option value="27幢"></datalist></div>
+            <div class="form-group"><label>🚪 房间号</label><input type="text" id="roomNo" placeholder="如：301" required></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>📅 入住时间</label><input type="date" id="checkInDate"></div>
+            <div class="form-group"><label>⏳ 到期时间</label><input type="date" id="expiryDate"></div>
+          </div>
+          <div class="form-section">
+            <div class="form-section-title">💰 租金与付款方式</div>
+            <div class="form-row">
+              <div class="form-group"><label>💳 付款方式</label><select id="paymentType"><option value="押一付三">押一付三</option><option value="押一付一">押一付一</option><option value="押二付一">押二付一</option><option value="押二付三">押二付三</option><option value="半年付">半年付</option><option value="年付">年付</option></select></div>
+              <div class="form-group"><label>📐 合同周期</label><select id="leaseMonths"><option value="3" selected>3个月</option><option value="1">1个月</option><option value="6">6个月</option><option value="12">12个月</option></select></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>💵 月租金（元）</label><input type="number" id="monthlyRent" placeholder="如：2000" min="0" step="any"></div>
+              <div class="form-group"><label>🔐 押金（元）</label><input type="number" id="deposit" placeholder="如：2000" min="0" step="any"></div>
+            </div>
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <label style="margin:0;cursor:pointer"><input type="checkbox" id="isReserved" style="width:auto;accent-color:#e91e63;margin-right:4px">🔖 预定</label>
+            <label style="margin:0;cursor:pointer"><input type="checkbox" id="isLocked" style="width:auto;accent-color:#636e72;margin-right:4px">🔒 锁定</label>
+            <label style="margin:0;cursor:pointer"><input type="checkbox" id="isRenewalCb" style="width:auto;accent-color:var(--info);margin-right:4px">🔄 续租</label>
+            <label style="margin:0;cursor:pointer"><input type="checkbox" id="isCheckoutCb" style="width:auto;accent-color:var(--danger);margin-right:4px">🏁 退租</label>
+          </div>
+          <div class="form-group"><label>🏁 实际退房日期 <span style="font-weight:400;text-transform:none">（勾选退租自动填今天）</span></label><input type="date" id="checkOutDate"></div>
+          <div class="form-group"><label>📌 备注</label><textarea id="notes" placeholder="租客姓名、联系方式等..."></textarea></div>
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary" id="submitBtn">💾 保存登记</button>
+            <button type="button" class="btn btn-outline" id="cancelBtn" style="display:none">取消编辑</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">📊 登记列表 <span style="font-weight:400;font-size:12px;color:var(--text-light);margin-left:auto" id="recordCount"></span></div>
+      <div class="card-body">
+        <div class="toolbar">
+          <div class="search-box"><span class="search-icon">🔍</span><input type="text" id="searchInput" placeholder="搜索楼栋、房间号、租客姓名..."></div>
+          <select id="filterStatus"><option value="all">全部状态</option><option value="active">正常入住中（>30天）</option><option value="warning">30天内到期</option><option value="remind">15天内到期提醒</option><option value="urgent">7天内到期</option><option value="expired">已超期未退</option><option value="checked">已退房</option><option value="vacant">空置</option><option value="reserved">已预定</option><option value="locked">已锁定</option><option value="renewal">续租记录</option></select>
+          <select id="filterBuilding"><option value="all">全部楼栋</option></select>
+          <button class="btn btn-outline btn-sm" id="exportBtn">📥 导出Excel</button>
+          <button class="btn btn-info btn-sm" id="importBtn">📥 批量导入</button>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr>
+            <th style="width:30px;cursor:default"><input type="checkbox" id="selectAll" title="全选/取消全选" style="accent-color:var(--primary);cursor:pointer"></th>
+            <th style="width:38px;cursor:default">#</th>
+            <th data-sort="buildingNo">楼栋号<span class="sort-arrow"></span></th><th data-sort="roomNo">房间号<span class="sort-arrow"></span></th>
+            <th data-sort="checkInDate">入住时间<span class="sort-arrow"></span></th><th data-sort="expiryDate">到期时间<span class="sort-arrow"></span></th>
+            <th data-sort="daysLeft">剩余天数<span class="sort-arrow"></span></th><th data-sort="status">状态<span class="sort-arrow"></span></th>
+            <th>付款方式</th><th>续租</th><th>实际退房</th><th>备注</th><th>操作</th>
+          </tr></thead>
+          <tbody id="tableBody"><tr><td colspan="13"><div class="empty-state"><div class="empty-icon">📭</div><p>暂无登记记录</p></div></td></tr></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-grid">
+    <div class="chart-card"><div class="chart-title">📈 各楼栋房源分布</div><canvas id="chartBuilding"></canvas></div>
+    <div class="chart-card"><div class="chart-title">📅 未来6个月到期趋势</div><canvas id="chartExpiry"></canvas></div>
+    <div class="chart-card"><div class="chart-title">🍩 入住状态占比</div><canvas id="chartStatus"></canvas></div>
+    <div class="chart-card"><div class="chart-title">🔄 续租率统计（按楼栋）</div><canvas id="chartRenewal"></canvas></div>
+  </div>
+</div>
+</div>
+
+<!-- ======================== TAB 2: 数据分析 & 招租决策 ======================== -->
+<div class="tab-panel" id="tab-analytics">
+<div class="container">
+
+  <!-- 楼栋配置数据 -->
+  <!--
+    5幢: 252间, 14间/层, 19层 (18层住房=14×18=252)
+    6幢: 252间, 14间/层, 19层
+    12幢: 252间, 14间/层, 19层
+    16幢: 168间, 14间/层, 13层 (12层住房=14×12=168)
+    21幢: 108间, 6间/层, 19层 (18层住房=6×18=108)
+    26幢: 144间, 8间/层, 19层 (18层住房=8×18=144)
+    27幢: 108间, 6间/层, 19层 (18层住房=6×18=108)
+  -->
+
+  <!-- 招租决策建议 -->
+  <div id="recruitmentAdvice"></div>
+
+  <!-- 楼栋全景面板 -->
+  <div class="section-title">🏢 楼栋全景面板</div>
+  <div class="building-grid" id="buildingGrid"></div>
+
+  <!-- 图表行 -->
+  <div class="charts-grid">
+    <div class="chart-card"><div class="chart-title">📊 各楼栋入住率对比</div><canvas id="chartOccupancy"></canvas></div>
+    <div class="chart-card"><div class="chart-title">📅 未来90天预计空出房源</div><canvas id="chartVacancy"></canvas></div>
+    <div class="chart-card"><div class="chart-title">📈 月度入住/退房趋势</div><canvas id="chartTrend"></canvas></div>
+    <div class="chart-card"><div class="chart-title">🔮 供需缺口预测</div><canvas id="chartGap"></canvas></div>
+  </div>
+
+  <!-- 台账汇总 & 预测表格 -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px">
+    <div class="card">
+      <div class="card-header">📋 台账汇总（按楼栋）</div>
+      <div class="card-body" style="padding:0">
+        <div class="table-wrap" style="max-height:400px">
+          <table class="summary-table">
+            <thead><tr><th>楼栋</th><th>总房源</th><th>已入住</th><th>空置</th><th>入住率</th><th>续租次数</th><th>15天到期</th><th>超期</th><th>月租金收入</th></tr></thead>
+            <tbody id="ledgerBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">🔮 未来缺口预测 & 招租建议</div>
+      <div class="card-body" style="padding:0">
+        <div class="table-wrap" style="max-height:400px">
+          <table class="prediction-table" id="predictionTable">
+            <thead><tr><th>时间窗口</th><th>预计到期</th><th>预计空置率</th><th>建议招租数</th><th>紧迫程度</th><th>建议行动</th></tr></thead>
+            <tbody id="predictionBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ==================== SCRIPTS ==================== -->
+<script>
+// ==================== 楼栋配置 ====================
+const BUILDING_CONFIG = {
+  '5幢':  { totalRooms:252, roomsPerFloor:14, housingFloors:18, totalFloors:19, roomType:'单间（一室）' },
+  '6幢':  { totalRooms:252, roomsPerFloor:14, housingFloors:18, totalFloors:19, roomType:'单间（一室）' },
+  '12幢': { totalRooms:252, roomsPerFloor:14, housingFloors:18, totalFloors:19, roomType:'单间（一室）' },
+  '16幢': { totalRooms:168, roomsPerFloor:14, housingFloors:12, totalFloors:13, roomType:'单间（一室）' },
+  '21幢': { totalRooms:108, roomsPerFloor:6,  housingFloors:18, totalFloors:19, roomType:'套间（两室一厅）' },
+  '26幢': { totalRooms:144, roomsPerFloor:8,  housingFloors:18, totalFloors:19, roomType:'套间（两室一厅）' },
+  '27幢': { totalRooms:108, roomsPerFloor:6,  housingFloors:18, totalFloors:19, roomType:'套间（两室一厅）' },
+};
+const BUILDING_ORDER = ['5幢','6幢','12幢','16幢','21幢','26幢','27幢'];
+
+// ==================== 数据层 ====================
+const STORAGE_KEY = 'rental_records_v2';
+let records = [];
+let editingId = null;
+let currentSort = { field: 'expiryDate', asc: true };
+let lastFilteredRecords = [];
+let selectedIds = new Set();
+
+function loadRecords() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    records = raw ? JSON.parse(raw) : [];
+    records = records.map(r => ({
+      id: r.id || generateId(), buildingNo: r.buildingNo || '', roomNo: r.roomNo || '',
+      checkInDate: r.checkInDate || '', expiryDate: r.expiryDate || '',
+      checkOutDate: r.checkOutDate || null, notes: r.notes || '',
+      isRenewal: r.isRenewal || false, isReserved: r.isReserved || false,
+      isLocked: r.isLocked || false,
+      parentRecordId: r.parentRecordId || null,
+      renewalSeq: r.renewalSeq || 0, paymentType: r.paymentType || '押一付三',
+      deposit: r.deposit || null, monthlyRent: r.monthlyRent || null,
+    }));
+  } catch (e) { records = []; }
+  // 版本升级：自动重新生成房间数据
+  const ver = localStorage.getItem('rental_db_version');
+  if (!ver || ver !== '3' || records.length === 0) {
+    // 保留已有租客数据（有日期的记录），只重新生成空置房间
+    const occupied = records.filter(r => r.checkInDate || r.expiryDate);
+    const seeded = generateAllRooms();
+    // 合并：已入住的覆盖生成数据中对应房间
+    const seedMap = new Map(seeded.map(s => [s.buildingNo + '|' + s.roomNo, s]));
+    occupied.forEach(o => {
+      const key = o.buildingNo + '|' + o.roomNo;
+      if (seedMap.has(key)) {
+        const s = seedMap.get(key);
+        // 保留已入住的全部信息，只确保字段完整
+        seedMap.set(key, { ...s, ...o, id: o.id, notes: o.notes || s.notes });
+      } else {
+        // 不存在的房间也加进去
+        seedMap.set(key, o);
+      }
+    });
+    records = [...seedMap.values()];
+    saveRecords();
+    localStorage.setItem('rental_db_version', '3');
+    console.log('✅ 房间数据已更新（版本3），总计：' + records.length + ' 间');
+  }
+}
+function saveRecords() { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); }
+function generateId() { return 'R' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2,6).toUpperCase(); }
+
+// ==================== 业务逻辑 ====================
+function getDaysLeft(expiryDate, checkOutDate) {
+  if (checkOutDate) return null;
+  if (!expiryDate) return null; // 空置房间无到期日
+  const today = new Date(); today.setHours(0,0,0,0);
+  const expiry = new Date(expiryDate); expiry.setHours(0,0,0,0);
+  return Math.ceil((expiry - today) / (1000*60*60*24));
+}
+function getStatus(record) {
+  if (record.isLocked) return 'locked';
+  // 已预定优先显示（正常入住/已退房/空置都可以叠加预定）
+  if (record.isReserved) return 'reserved';
+  if (record.checkOutDate) return 'checked';
+  // 空置：两个日期都没有；只要有到期日就算已入住
+  if (!record.checkInDate && !record.expiryDate) return 'vacant';
+  const days = getDaysLeft(record.expiryDate, null);
+  if (days === null) return 'checked';
+  if (days < 0) return 'expired';
+  if (days <= 7) return 'urgent';
+  if (days <= 15) return 'remind';
+  if (days <= 30) return 'warning';
+  return 'normal';
+}
+function getStatusLabel(s) {
+  const m = {normal:'正常入住',warning:'30天内到期',remind:'15天内到期',urgent:'7天内到期',expired:'已超期',checked:'已退房',vacant:'空置',reserved:'已预定',locked:'已锁定'};
+  return m[s] || s;
+}
+function getStatusBadgeClass(s) {
+  const m = {normal:'badge-normal',warning:'badge-warning',remind:'badge-remind',urgent:'badge-urgent',expired:'badge-expired',checked:'badge-checked',vacant:'badge-vacant',reserved:'badge-reserved',locked:'badge-locked'};
+  return m[s] || '';
+}
+function getDaysDisplay(record) {
+  if (record.checkOutDate) return '—';
+  if (!record.checkInDate && !record.expiryDate) return '待填写';
+  if (!record.expiryDate) return '—';
+  const days = getDaysLeft(record.expiryDate, null);
+  if (days === null) return '—';
+  if (days < 0) return `超期 ${Math.abs(days)} 天`;
+  if (days === 0) return '⚠️ 今日到期';
+  return `剩余 ${days} 天`;
+}
+function getDaysDisplayClass(record) {
+  if (record.checkOutDate) return '';
+  if (!record.checkInDate && !record.expiryDate) return 'badge-vacant';
+  if (!record.expiryDate) return '';
+  const days = getDaysLeft(record.expiryDate, null);
+  if (days === null) return '';
+  if (days < 0) return 'badge-expired';
+  if (days <= 7) return 'badge-urgent';
+  if (days <= 15) return 'badge-remind';
+  if (days <= 30) return 'badge-warning';
+  return 'badge-normal';
+}
+function getRowClass(record) {
+  const s = getStatus(record);
+  if (s === 'checked' || s === 'vacant') return 'row-checked';
+  if (s === 'locked') return 'row-checked';
+  if (s === 'remind' || s === 'urgent' || s === 'warning') return 'row-remind';
+  if (record.isRenewal) return 'row-renewal';
+  return '';
+}
+function getActiveRecords() { return records.filter(r => !r.isLocked && !r.checkOutDate && (r.expiryDate || r.isReserved)); }
+
+// ==================== 统计 ====================
+function getStats() {
+  let total = records.length, active=0, remind=0, urgent=0, expired=0, checked=0, renewal=0, vacant=0, reserved=0, locked=0;
+  records.forEach(r => {
+    const s = getStatus(r);
+    if (r.isRenewal) renewal++;
+    if (s==='locked') locked++;
+    else if (s==='checked') checked++;
+    else if (s==='expired') expired++;
+    else if (s==='urgent') urgent++;
+    else if (s==='remind') remind++;
+    else if (s==='vacant') vacant++;
+    else if (s==='reserved') reserved++;
+    else active++;
+  });
+  return {total,active,remind,urgent,expired,checked,renewal,vacant,reserved,locked};
+}
+function getRemindList() {
+  return records.filter(r => {
+    if (r.checkOutDate) return false;
+    if (!r.checkInDate || !r.expiryDate) return false;
+    const days = getDaysLeft(r.expiryDate, null);
+    return days !== null && days >= 1 && days <= 15;
+  }).sort((a,b) => (getDaysLeft(a.expiryDate,null)??999) - (getDaysLeft(b.expiryDate,null)??999));
+}
+
+// ==================== 渲染 - 管理页 ====================
+function renderAlertBanner() {
+  const list = getRemindList();
+  const banner = document.getElementById('alertBanner');
+  if (list.length===0) { banner.classList.add('hidden'); return; }
+  banner.classList.remove('hidden');
+  document.getElementById('alertCount').textContent = list.length;
+  const names = list.slice(0,3).map(r=>`${r.buildingNo} ${r.roomNo}`).join('、');
+  const suffix = list.length>3?` 等${list.length}间`:'';
+  document.getElementById('alertText').textContent = `⚠️ ${names}${suffix} 即将到期（15天内），请及时联系租客！`;
+}
+function renderStats() {
+  const s = getStats();
+  document.getElementById('statTotal').textContent=s.total;
+  document.getElementById('statActive').textContent=s.active;
+  document.getElementById('statRemind').textContent=s.remind;
+  document.getElementById('statUrgent').textContent=s.urgent;
+  document.getElementById('statExpired').textContent=s.expired;
+  document.getElementById('statChecked').textContent=s.checked;
+  document.getElementById('statRenewal').textContent=s.renewal;
+  document.getElementById('statVacant').textContent=s.vacant;
+  document.getElementById('statReserved').textContent=s.reserved;
+  document.getElementById('statLocked').textContent=s.locked;
+  // warning status (30天内到期) is grouped in active, count separately
+  let wCount = 0; records.forEach(r => { if (getStatus(r) === 'warning') wCount++; });
+  document.getElementById('statWarning').textContent = wCount;
+}
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  const search = document.getElementById('searchInput').value.trim().toLowerCase();
+  const fs = document.getElementById('filterStatus').value;
+  const fb = document.getElementById('filterBuilding').value;
+  console.log('🔍 搜索:', search || '(空)', '| 状态:', fs, '| 楼栋:', fb, '| 总记录:', records.length);
+
+  let filtered = records.filter(r => {
+    if (search) { const h = `${r.buildingNo} ${r.roomNo} ${r.notes||''}`.toLowerCase(); if (!h.includes(search)) return false; }
+    if (fs!=='all') { const s=getStatus(r); if (fs==='active'&&s!=='normal') return false; else if (fs==='renewal'&&!r.isRenewal) return false; else if (fs==='vacant'&&s!=='vacant') return false; else if (fs==='reserved'&&s!=='reserved') return false; else if (fs==='locked'&&s!=='locked') return false; else if (fs!=='active'&&fs!=='renewal'&&fs!=='vacant'&&fs!=='reserved'&&fs!=='locked'&&fs!=='warning'&&s!==fs) return false; }
+    if (fb!=='all'&&r.buildingNo!==fb) return false;
+    return true;
+  });
+
+  const field=currentSort.field, asc=currentSort.asc;
+  filtered.sort((a,b)=>{
+    let va,vb;
+    switch(field){
+      case 'buildingNo': case 'roomNo': va=(a[field]||'').toString(); vb=(b[field]||'').toString(); return asc?va.localeCompare(vb,'zh'):vb.localeCompare(va,'zh');
+      case 'checkInDate': case 'expiryDate': va=a[field]||''; vb=b[field]||''; return asc?va.localeCompare(vb):vb.localeCompare(va);
+      case 'daysLeft': va=a.checkOutDate?Infinity:(getDaysLeft(a.expiryDate,null)??Infinity); vb=b.checkOutDate?Infinity:(getDaysLeft(b.expiryDate,null)??Infinity); return asc?va-vb:vb-va;
+      case 'status': const o=['remind','urgent','expired','warning','normal','checked']; va=o.indexOf(getStatus(a)); vb=o.indexOf(getStatus(b)); return asc?va-vb:vb-va;
+      default: return 0;
+    }
+  });
+
+  lastFilteredRecords = filtered;
+  // 清理已不存在的选中 ID
+  const validIds = new Set(filtered.map(r => r.id));
+  let cleaned = false;
+  selectedIds.forEach(id => { if (!validIds.has(id)) { selectedIds.delete(id); cleaned = true; } });
+  document.getElementById('selectAll').checked = filtered.length > 0 && filtered.every(r => selectedIds.has(r.id));
+  const selInfo = selectedIds.size > 0 ? ` / 已选 <strong style="color:var(--primary)">${selectedIds.size}</strong> 条` : '';
+  document.getElementById('recordCount').innerHTML = `共 ${filtered.length} 条${selInfo}`;
+  if (filtered.length===0) { tbody.innerHTML=`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">📭</div><p>${search||fs!=='all'?'没有匹配的记录':'暂无登记记录'}</p></div></td></tr>`; return; }
+
+  tbody.innerHTML = filtered.map((r, idx) => {
+    const s=getStatus(r), bc=getStatusBadgeClass(s), sl=getStatusLabel(s), dd=getDaysDisplay(r), dc=getDaysDisplayClass(r), rc=getRowClass(r);
+    const rn=r.isRenewal?`<span class="badge badge-renewal">第${r.renewalSeq}次</span>`:'—';
+    const btns=[
+      `<button class="btn btn-outline btn-xs" onclick="editRecord('${r.id}')">✏️</button>`,
+      !r.checkOutDate?`<button class="btn btn-info btn-xs" onclick="openRenewModal('${r.id}')">🔄</button>`:'',
+      !r.checkOutDate?`<button class="btn btn-warning btn-xs" onclick="checkOut('${r.id}')">🏁</button>`:'',
+      `<button class="btn btn-xs" style="background:${r.isReserved?'#fff0f5':'#fff'};color:${r.isReserved?'#e91e63':'#b0b8c1'};border:1px solid ${r.isReserved?'#f9a8c9':'#ddd'}" onclick="toggleReserved('${r.id}')" title="${r.isReserved?'取消预定':'预定'}">🔖</button>`,
+      `<button class="btn btn-xs" style="background:#f0f0f5;color:#636e72;border:1px solid #ccc" onclick="toggleLock('${r.id}')" title="${r.isLocked?'解锁':'锁定'}">${r.isLocked?'🔓':'🔒'}</button>`,
+      `<button class="btn btn-danger btn-xs" onclick="deleteRecord('${r.id}')">🗑️</button>`,
+    ].filter(Boolean).join('');
+    const checked = selectedIds.has(r.id) ? ' checked' : '';
+    return `<tr class="${rc}" data-id="${r.id}"><td><input type="checkbox" class="row-checkbox" data-id="${r.id}" ${checked} style="accent-color:var(--primary);cursor:pointer"></td><td style="color:var(--text-light);font-size:11px">${idx+1}</td><td><strong>${escapeHtml(r.buildingNo)}</strong></td><td>${escapeHtml(r.roomNo)}</td><td>${r.checkInDate}</td><td>${r.expiryDate}</td><td><span class="badge ${dc}">${dd}</span></td><td><span class="badge ${bc}">${sl}</span></td><td><span class="badge badge-payment">${escapeHtml(r.paymentType||'押一付三')}</span></td><td>${rn}</td><td>${r.checkOutDate||'<span style="color:#b0b8c1">未退房</span>'}</td><td style="max-width:100px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(r.notes||'')}">${escapeHtml(r.notes||'—')}</td><td><div class="btn-group" style="margin-top:0">${btns}</div></td></tr>`;
+  }).join('');
+}
+function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function updateSortArrows(){
+  document.querySelectorAll('#tab-manage thead th[data-sort]').forEach(th=>{
+    const f=th.dataset.sort, a=th.querySelector('.sort-arrow');
+    a.textContent = f===currentSort.field ? (currentSort.asc?'▲':'▼') : '';
+  });
+}
+function renderBuildingFilter(){
+  const sel=document.getElementById('filterBuilding'), cv=sel.value;
+  const blds=[...new Set(records.map(r=>r.buildingNo))].sort((a,b)=>a.localeCompare(b,'zh'));
+  sel.innerHTML='<option value="all">全部楼栋</option>'+blds.map(b=>`<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+  sel.value=blds.includes(cv)?cv:'all';
+}
+
+// ==================== 图表 - 管理页 ====================
+let mgmtCharts=[];
+function destroyMgmtCharts(){mgmtCharts.forEach(c=>{if(c)c.destroy()});mgmtCharts=[];}
+function renderMgmtCharts(){
+  try { destroyMgmtCharts(); } catch(e) { mgmtCharts = []; }
+  if(records.length===0) return;
+  try {
+  const colors=['#4f6ef7','#27ae60','#f39c12','#e74c3c','#8e44ad','#1abc9c','#e67e22','#3498db','#2c3e50','#95a5a6'];
+  // chartBuilding
+  const bm={}; records.forEach(r=>{bm[r.buildingNo]=(bm[r.buildingNo]||0)+1});
+  const bl=Object.keys(bm).sort((a,b)=>a.localeCompare(b,'zh'));
+  const c1=document.getElementById('chartBuilding').getContext('2d');
+  mgmtCharts.push(new Chart(c1,{type:'bar',data:{labels:bl,datasets:[{label:'房源数',data:bl.map(l=>bm[l]),backgroundColor:bl.map((_,i)=>colors[i%colors.length]+'99'),borderColor:bl.map((_,i)=>colors[i%colors.length]),borderWidth:2,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1,precision:0}}}}}));
+  // chartExpiry
+  const today=new Date();today.setDate(1);today.setHours(0,0,0,0);
+  const months=[]; for(let i=0;i<6;i++){const d=new Date(today.getFullYear(),today.getMonth()+i,1);months.push({label:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,year:d.getFullYear(),month:d.getMonth()});}
+  const md=months.map(m=>records.filter(r=>{if(r.checkOutDate||!r.expiryDate)return false;const ex=new Date(r.expiryDate);return ex.getFullYear()===m.year&&ex.getMonth()===m.month;}).length);
+  const c2=document.getElementById('chartExpiry').getContext('2d');
+  mgmtCharts.push(new Chart(c2,{type:'line',data:{labels:months.map(m=>m.label),datasets:[{label:'到期房源数',data:md,borderColor:'#e74c3c',backgroundColor:'rgba(231,76,60,0.08)',fill:true,tension:0.4,pointBackgroundColor:'#e74c3c',pointRadius:5,borderWidth:2.5}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1,precision:0}}}}}));
+  // chartStatus
+  const sm={normal:0,warning:0,remind:0,urgent:0,expired:0,checked:0};records.forEach(r=>{sm[getStatus(r)]++;});
+  const sLabels=['正常入住','30天内到期','15天内到期','7天内到期','已超期','已退房'],sData=[sm.normal,sm.warning,sm.remind,sm.urgent,sm.expired,sm.checked],sColors=['#27ae60','#f39c12','#e91e63','#e74c3c','#636e72','#b0b8c1'];
+  const c3=document.getElementById('chartStatus').getContext('2d');
+  mgmtCharts.push(new Chart(c3,{type:'doughnut',data:{labels:sLabels.filter((_,i)=>sData[i]>0),datasets:[{data:sData.filter(d=>d>0),backgroundColor:sColors.filter((_,i)=>sData[i]>0),borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'bottom',labels:{padding:14,usePointStyle:true}}}}}));
+  const rnByB={},totByB={};records.forEach(r=>{totByB[r.buildingNo]=(totByB[r.buildingNo]||0)+1;if(r.isRenewal)rnByB[r.buildingNo]=(rnByB[r.buildingNo]||0)+1;});
+  const rbl2=Object.keys(totByB).sort((a,b)=>a.localeCompare(b,'zh'));
+  const c4=document.getElementById('chartRenewal').getContext('2d');
+  mgmtCharts.push(new Chart(c4,{type:'bar',data:{labels:rbl2,datasets:[{label:'续租率(%)',data:rbl2.map(b=>Math.round(((rnByB[b]||0)/(totByB[b]||1))*100)),backgroundColor:rbl2.map((_,i)=>colors[i%colors.length]+'88'),borderColor:rbl2.map((_,i)=>colors[i%colors.length]),borderWidth:2,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:v=>v+'%'}}}}}));
+  } catch(e) {
+    console.warn('图表渲染失败，请检查 Chart.js 是否加载:', e.message);
+    mgmtCharts = [];
+  }
+}
+function renderManageAll(){renderAlertBanner();renderStats();renderBuildingFilter();renderTable();updateSortArrows();renderMgmtCharts();}
+
+// ==================== 表单操作 ====================
+document.getElementById('recordForm').addEventListener('submit',function(e){
+  e.preventDefault();
+  try {
+  const id=document.getElementById('recordId').value;
+  const data={
+    buildingNo:document.getElementById('buildingNo').value.trim(),
+    roomNo:document.getElementById('roomNo').value.trim(),
+    checkInDate:document.getElementById('checkInDate').value,
+    expiryDate:document.getElementById('expiryDate').value,
+    checkOutDate:document.getElementById('checkOutDate').value||null,
+    notes:document.getElementById('notes').value.trim(),
+    isReserved:document.getElementById('isReserved').checked,
+    isLocked:document.getElementById('isLocked').checked,
+    isRenewal:document.getElementById('isRenewalCb').checked,
+    checkOutDate:(document.getElementById('isCheckoutCb').checked ? new Date().toISOString().split('T')[0] : document.getElementById('checkOutDate').value)||null,
+    parentRecordId:document.getElementById('parentRecordId').value||null,
+    renewalSeq:parseInt(document.getElementById('renewalSeq').value)||0,
+    paymentType:document.getElementById('paymentType').value,
+    deposit:document.getElementById('deposit').value?parseFloat(document.getElementById('deposit').value):null,
+    monthlyRent:document.getElementById('monthlyRent').value?parseFloat(document.getElementById('monthlyRent').value):null,
+  };
+  if(!data.buildingNo||!data.roomNo){showToast('请填写楼栋号和房间号','error');return;}
+  // 日期非必填（空置房间可以先存房间号后续再补日期），但如果填了就要校验
+  if(data.checkInDate&&data.expiryDate&&data.expiryDate<data.checkInDate){showToast('到期时间不能早于入住时间','error');return;}
+  if(data.checkOutDate&&data.checkInDate&&data.checkOutDate<data.checkInDate){showToast('退房日期不能早于入住时间','error');return;}
+
+  if(id){
+    const idx=records.findIndex(r=>r.id===id);
+    if(idx>=0){records[idx]={...records[idx],...data};showToast('记录已更新 ✅','success');}
+  }else{
+    records.push({id:generateId(),...data});
+    showToast(data.isRenewal?`续租登记成功！🔄`:'登记成功！🎉','success');
+  }
+  saveRecords();resetForm();renderAll();
+  } catch(err) {
+    console.error('表单提交异常:', err.message, err.stack);
+    showToast('操作失败，请查看浏览器控制台（F12）','error');
+  }
+});
+function editRecord(id){
+  const r=records.find(r=>r.id===id);if(!r)return;editingId=id;
+  // 逐个设置表单字段，注意 recordId 映射到 r.id
+  const fieldMap = {
+    recordId:       r.id,
+    buildingNo:     r.buildingNo ?? '',
+    roomNo:         r.roomNo ?? '',
+    checkInDate:    r.checkInDate ?? '',
+    expiryDate:     r.expiryDate ?? '',
+    checkOutDate:   r.checkOutDate ?? '',
+    notes:          r.notes ?? '',
+    isRenewal:      r.isRenewal ? '1' : '0',
+    parentRecordId: r.parentRecordId ?? '',
+    renewalSeq:     r.renewalSeq ?? 0,
+    paymentType:    r.paymentType ?? '押一付三',
+  };
+  Object.entries(fieldMap).forEach(([k, v]) => {
+    const el = document.getElementById(k);
+    if (el) el.value = v;
+  });
+  document.getElementById('deposit').value=r.deposit??'';document.getElementById('monthlyRent').value=r.monthlyRent??'';
+  document.getElementById('isReserved').checked = r.isReserved || false;
+  document.getElementById('isLocked').checked = r.isLocked || false;
+  document.getElementById('isRenewalCb').checked = r.isRenewal || false;
+  document.getElementById('isCheckoutCb').checked = !!r.checkOutDate;
+  const badge=document.getElementById('renewalBadge');
+  if(r.isRenewal){badge.style.display='';badge.textContent=`续租·第${r.renewalSeq}次`;}else{badge.style.display='none';}
+  document.getElementById('submitBtn').textContent='✏️ 更新记录';
+  document.getElementById('cancelBtn').style.display='';
+  document.getElementById('formTitle').textContent='编辑记录';
+  document.getElementById('formCard').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function resetForm(){
+  editingId=null;
+  document.getElementById('recordId').value='';document.getElementById('recordForm').reset();
+  document.getElementById('isRenewal').value='0';document.getElementById('parentRecordId').value='';document.getElementById('renewalSeq').value='0';
+  document.getElementById('paymentType').value='押一付三';document.getElementById('leaseMonths').value='3';
+  document.getElementById('submitBtn').textContent='💾 保存登记';document.getElementById('cancelBtn').style.display='none';
+  document.getElementById('formTitle').textContent='新增登记';document.getElementById('renewalBadge').style.display='none';
+  document.getElementById('isReserved').checked = false;
+  document.getElementById('isLocked').checked = false;
+  document.getElementById('isRenewalCb').checked = false;
+  document.getElementById('isCheckoutCb').checked = false;
+  document.getElementById('checkInDate').value=new Date().toISOString().split('T')[0];
+  document.getElementById('expiryDate').value=new Date(Date.now()+90*24*60*60*1000).toISOString().split('T')[0];
+}
+document.getElementById('cancelBtn').addEventListener('click',resetForm);
+// 退租勾选 → 自动填今天日期
+document.getElementById('isCheckoutCb').addEventListener('change',function(){
+  document.getElementById('checkOutDate').value = this.checked ? new Date().toISOString().split('T')[0] : '';
+});
+// 续租勾选 → 同步隐藏字段
+document.getElementById('isRenewalCb').addEventListener('change',function(){
+  document.getElementById('isRenewal').value = this.checked ? '1' : '0';
+});
+
+// 付款方式联动
+document.getElementById('paymentType').addEventListener('change',function(){
+  const pt=this.value,ls=document.getElementById('leaseMonths');
+  if(pt==='押一付三'||pt==='押二付三')ls.value='3';
+  else if(pt==='押一付一'||pt==='押二付一')ls.value='1';
+  else if(pt==='半年付')ls.value='6';else if(pt==='年付')ls.value='12';
+  autoSetExpiry();
+});
+document.getElementById('leaseMonths').addEventListener('change',autoSetExpiry);
+document.getElementById('checkInDate').addEventListener('change',autoSetExpiry);
+function autoSetExpiry(){
+  const ci=document.getElementById('checkInDate').value;if(!ci)return;
+  const m=parseInt(document.getElementById('leaseMonths').value)||3;
+  const d=new Date(ci);d.setMonth(d.getMonth()+m);
+  document.getElementById('expiryDate').value=d.toISOString().split('T')[0];
+}
+
+// ==================== 续租弹窗 ====================
+function openRenewModal(id){
+  const record=records.find(r=>r.id===id);
+  if(!record||record.checkOutDate){showToast('该记录已退房，无法续租','error');return;}
+  const newCheckIn=record.expiryDate;
+  const leaseMonths=record.paymentType==='押一付三'?3:(record.paymentType==='半年付'?6:(record.paymentType==='年付'?12:3));
+  const d=new Date(newCheckIn);d.setMonth(d.getMonth()+leaseMonths);const newExpiry=d.toISOString().split('T')[0];
+  const newRenewalSeq=record.renewalSeq+1;
+
+  const overlay=document.createElement('div');overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:560px">
+    <h3>🔄 续租登记 — 第${newRenewalSeq}次续租</h3>
+    <div class="modal-subtitle">${escapeHtml(record.buildingNo)} ${escapeHtml(record.roomNo)} 续租，新合同从上期到期日无缝衔接</div>
+    <div class="info-box">
+      <div class="info-row"><span class="info-label">上一合同到期日</span><span class="info-value">${record.expiryDate}</span></div>
+      <div class="info-row"><span class="info-label">新合同开始日</span><span class="info-value" style="color:var(--success)">${newCheckIn}（无缝衔接）</span></div>
+      <div class="info-row"><span class="info-label">当前付款方式</span><span class="info-value">${escapeHtml(record.paymentType||'押一付三')}</span></div>
+      ${record.monthlyRent?`<div class="info-row"><span class="info-label">月租金</span><span class="info-value">¥${record.monthlyRent}/月</span></div>`:''}
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>📅 新入住时间（锁定）</label><input type="date" id="renewCheckIn" value="${newCheckIn}" style="background:#e8f8f0;font-weight:600" readonly></div>
+      <div class="form-group"><label>⏳ 新到期时间</label><input type="date" id="renewExpiry" value="${newExpiry}" required></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>💳 付款方式</label><select id="renewPaymentType">${['押一付三','押一付一','押二付一','押二付三','半年付','年付'].map(p=>`<option value="${p}" ${(record.paymentType||'押一付三')===p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="form-group"><label>📐 续租周期</label><select id="renewLeaseMonths"><option value="3">3个月</option><option value="1">1个月</option><option value="6">6个月</option><option value="12">12个月</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>💵 月租金（元）</label><input type="number" id="renewMonthlyRent" value="${record.monthlyRent||''}" min="0" step="any"></div>
+      <div class="form-group"><label>🔐 押金（元）</label><input type="number" id="renewDeposit" value="${record.deposit||''}" min="0" step="any"></div>
+    </div>
+    <div class="form-group"><label>📌 备注</label><textarea id="renewNotes">${escapeHtml(record.notes||'')}</textarea></div>
+    <p style="font-size:12px;color:var(--text-light)">ℹ️ 确认后将在当前到期日基础上延长所选周期，不创建新记录。</p>
+    <div class="btn-group"><button class="btn btn-outline cancel-renew-btn">取消</button><button class="btn btn-info confirm-renew-btn">🔄 确认续租</button></div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#renewLeaseMonths').addEventListener('change',function(){const m=parseInt(this.value);const dt=new Date(newCheckIn);dt.setMonth(dt.getMonth()+m);overlay.querySelector('#renewExpiry').value=dt.toISOString().split('T')[0];});
+  overlay.querySelector('#renewPaymentType').addEventListener('change',function(){const pt=this.value,ls=overlay.querySelector('#renewLeaseMonths');if(pt==='押一付三'||pt==='押二付三')ls.value='3';else if(pt==='押一付一'||pt==='押二付一')ls.value='1';else if(pt==='半年付')ls.value='6';else if(pt==='年付')ls.value='12';ls.dispatchEvent(new Event('change'));});
+  overlay.querySelector('.cancel-renew-btn').addEventListener('click',()=>overlay.remove());
+  overlay.querySelector('.confirm-renew-btn').addEventListener('click',()=>{
+    const ne=overlay.querySelector('#renewExpiry').value,npt=overlay.querySelector('#renewPaymentType').value;
+    const nmr=overlay.querySelector('#renewMonthlyRent').value?parseFloat(overlay.querySelector('#renewMonthlyRent').value):null;
+    const ndep=overlay.querySelector('#renewDeposit').value?parseFloat(overlay.querySelector('#renewDeposit').value):null;
+    const nn=overlay.querySelector('#renewNotes').value.trim();
+    if(!ne){showToast('请填写新到期时间','error');return;}
+    // 直接在原记录上延长到期日，续租次数+1
+    record.expiryDate = ne;
+    record.checkInDate = record.checkInDate || newCheckIn;
+    record.isRenewal = true;
+    record.renewalSeq = newRenewalSeq;
+    if(npt) record.paymentType = npt;
+    if(nmr !== null) record.monthlyRent = nmr;
+    if(ndep !== null) record.deposit = ndep;
+    if(nn) record.notes = nn;
+    saveRecords();overlay.remove();resetForm();renderAll();
+    showToast(`续租成功！🔄 第${newRenewalSeq}次续租，新到期日：${ne}`,'success');
+  });
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+}
+
+function deleteRecord(id){
+  const r=records.find(r=>r.id===id);if(!r)return;
+  showConfirm(`确定删除 <strong>${escapeHtml(r.buildingNo)} ${escapeHtml(r.roomNo)}</strong>？${r.isRenewal?'<br><span style="color:#e74c3c">⚠️ 这是续租记录</span>':''}`,()=>{
+    records=records.filter(r=>r.id!==id);selectedIds.delete(id);saveRecords();if(editingId===id)resetForm();renderAll();showToast('已删除','success');
+  });
+}
+function toggleReserved(id){
+  const r=records.find(r=>r.id===id);if(!r)return;
+  r.isReserved=!r.isReserved;
+  saveRecords();renderAll();
+  showToast(r.isReserved?'🔖 已预定':'🔖 已取消预定','success');
+}
+function toggleLock(id){
+  const r=records.find(r=>r.id===id);if(!r)return;
+  r.isLocked=!r.isLocked;
+  saveRecords();renderAll();
+  showToast(r.isLocked?'🔒 已锁定（该房间算空置）':'🔓 已解锁','success');
+}
+function checkOut(id){
+  const r=records.find(r=>r.id===id);if(!r||r.checkOutDate)return;
+  const today=new Date().toISOString().split('T')[0];
+  const days=getDaysLeft(r.expiryDate,null);
+  showConfirm(`确认将 <strong>${escapeHtml(r.buildingNo)} ${escapeHtml(r.roomNo)}</strong> 退房？<br>退房日期：<strong>${today}</strong>，退租后变为空置房${days!==null&&days<0?`<br>⚠️ 已超期 ${Math.abs(days)} 天`:''}`,()=>{
+    // 清空日期，变为空置房
+    r.checkInDate = '';
+    r.expiryDate = '';
+    r.checkOutDate = null;
+    r.isRenewal = false;
+    r.renewalSeq = 0;
+    r.paymentType = '押一付三';
+    r.monthlyRent = null;
+    r.deposit = null;
+    r.notes = (r.notes ? r.notes + ' | ' : '') + '退租日:' + today;
+    saveRecords();renderAll();showToast('退房登记成功 🏁 已变为空置房','success');
+  });
+}
+
+// ==================== 搜索/筛选/排序 ====================
+document.getElementById('searchInput').addEventListener('input',debounce(renderTable,300));
+document.getElementById('filterStatus').addEventListener('change',renderTable);
+document.getElementById('filterBuilding').addEventListener('change',renderTable);
+document.querySelectorAll('.stat-card[data-filter]').forEach(c=>{c.addEventListener('click',()=>{document.getElementById('filterStatus').value=c.dataset.filter;renderTable();});});
+document.querySelectorAll('#tab-manage thead th[data-sort]').forEach(th=>{th.addEventListener('click',()=>{const f=th.dataset.sort;if(currentSort.field===f)currentSort.asc=!currentSort.asc;else{currentSort.field=f;currentSort.asc=true;}renderTable();});});
+
+// ==================== 行选择（复选框） ====================
+// 全选/取消全选
+document.getElementById('selectAll').addEventListener('change', function(){
+  const checked = this.checked;
+  lastFilteredRecords.forEach(r => {
+    if (checked) selectedIds.add(r.id); else selectedIds.delete(r.id);
+  });
+  renderTable();
+});
+// 单行勾选（事件委托）
+document.getElementById('tableBody').addEventListener('change', function(e){
+  if (e.target.classList.contains('row-checkbox')) {
+    const id = e.target.dataset.id;
+    if (e.target.checked) selectedIds.add(id); else selectedIds.delete(id);
+    document.getElementById('selectAll').checked = lastFilteredRecords.length > 0 && lastFilteredRecords.every(r => selectedIds.has(r.id));
+    const selInfo = selectedIds.size > 0 ? ` / 已选 <strong style="color:var(--primary)">${selectedIds.size}</strong> 条` : '';
+    document.getElementById('recordCount').innerHTML = `共 ${lastFilteredRecords.length} 条${selInfo}`;
+  }
+});
+
+// ==================== 导出 ====================
+document.getElementById('exportBtn').addEventListener('click',()=>{
+  // 有手动勾选则导出勾选的，否则导出当前筛选结果
+  const exportData = selectedIds.size > 0
+    ? lastFilteredRecords.filter(r => selectedIds.has(r.id))
+    : (lastFilteredRecords.length > 0 ? lastFilteredRecords : records);
+  if(exportData.length===0){showToast('无数据','error');return;}
+  const fs = document.getElementById('filterStatus');
+  const filterLabel = selectedIds.size > 0 ? `已选${selectedIds.size}条` : (fs.value === 'all' ? '全部' : (fs.options[fs.selectedIndex]?.text || '当前筛选'));
+  const h=['楼栋号','房间号','入住时间','到期时间','退房日期','剩余天数','状态','付款方式','续租','续租次数','月租金','押金','备注'];
+  const rows=exportData.map(r=>[r.buildingNo,r.roomNo,r.checkInDate,r.expiryDate,r.checkOutDate||'',getDaysDisplay(r),getStatusLabel(getStatus(r)),r.paymentType||'押一付三',r.isRenewal?'是':'否',r.renewalSeq||0,r.monthlyRent??'',r.deposit??'',(r.notes||'')]);
+  // 使用 SheetJS 生成 Excel
+  const ws_data=[h,...rows];
+  const ws=XLSX.utils.aoa_to_sheet(ws_data);
+  // 设置列宽
+  ws['!cols']=h.map((_,i)=>i<2?{wch:8}:i<5?{wch:13}:i<7?{wch:10}:{wch:14});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'租房数据');
+  XLSX.writeFile(wb,`租房导出_${filterLabel}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showToast(`导出成功 📥 — ${filterLabel} ${exportData.length} 条`,'success');
+});
+
+// ==================== 批量导入 ====================
+document.getElementById('importBtn').addEventListener('click',()=>{
+  const overlay=document.createElement('div');overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:640px">
+    <h3>📥 批量导入房间数据</h3>
+    <div class="modal-subtitle">从外部系统粘贴数据，自动解析并导入</div>
+    <div class="form-group"><label>🏢 选择楼栋</label><select id="importBuilding">${BUILDING_ORDER.map(b=>`<option value="${b}">${b} — ${BUILDING_CONFIG[b].roomType}</option>`).join('')}</select></div>
+    <div class="form-group"><label>📋 粘贴数据（格式：房间号 + ￥价格/月(姓名) + 退: 日期）</label><textarea id="importData" rows="10" placeholder="2层
+201
+￥699/月(赵跃美)
+退: 2026-11-19
+202
+￥699/月(汪啟林)
+退: 2026-08-12
+..."></textarea></div>
+    <p style="font-size:12px;color:var(--text-light);margin-bottom:8px">📌 支持格式：楼层标记(如"2层")、房间号、￥价格/月(租客名)、退:YYYY-MM-DD、暂未定价、空置N天。已存在的房间会被更新。</p>
+    <div class="btn-group"><button class="btn btn-outline cancel-import-btn">取消</button><button class="btn btn-info confirm-import-btn">📥 开始导入</button></div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('.cancel-import-btn').addEventListener('click',()=>overlay.remove());
+  overlay.querySelector('.confirm-import-btn').addEventListener('click',()=>{
+    try {
+    const buildingNo=overlay.querySelector('#importBuilding').value;
+    const rawText=overlay.querySelector('#importData').value;
+    console.log('📥 导入开始, 楼栋:', buildingNo, '文本长度:', rawText.length);
+    if(!rawText.trim()){showToast('请粘贴数据','error');return;}
+    const result=parseImportData(rawText,buildingNo);
+    console.log('📥 解析结果: 共', result.imported, '间, 更新', result.updated, '间, 新增', result.added, '间');
+    if(result.imported===0){showToast('⚠️ 未能解析到数据，请按F12查看控制台日志','error');return;}
+    // 合并到 records
+    let upCount=0, addCount=0;
+    const importMap=new Map(result.rooms.map(r=>[r.buildingNo+'|'+r.roomNo,r]));
+    records.forEach((r,i)=>{
+      const key=r.buildingNo+'|'+r.roomNo;
+      if(importMap.has(key)){
+        records[i]={...r,...importMap.get(key),id:r.id};
+        importMap.delete(key);
+        upCount++;
+      }
+    });
+    importMap.forEach(r=>{records.push({...r,id:generateId()});addCount++;});
+    console.log('📥 实际更新:', upCount, '新增:', addCount, '总记录:', records.length);
+    saveRecords();
+    overlay.remove();
+    resetForm();
+    renderAll();
+    showToast(`✅ 导入成功！更新 ${upCount} 间，新增 ${addCount} 间，空置 ${result.vacant} 间`,'success');
+    } catch(e) {
+      console.error('导入异常:', e.message, e.stack);
+      showToast('导入失败: ' + e.message + ' (F12查看详情)','error');
+    }
+  });
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+});
+
+function parseImportData(text, buildingNo){
+  // 规范化文本：处理各种换行符和不可见字符
+  const cleanText = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  const lines=cleanText.split('\n').map(l=>l.trim()).filter(l=>l);
+  console.log('📥 总行数:', lines.length, '前5行:', lines.slice(0,5));
+  const rooms=[];
+  let currentFloor=0;
+  let i=0;
+  while(i<lines.length){
+    let line=lines[i];
+    // 楼层标记: "2层", "3层" 等
+    const floorMatch=line.match(/^(\d{1,2})层$/);
+    if(floorMatch){currentFloor=parseInt(floorMatch[1]);i++;continue;}
+    // 房间号: 3-4位纯数字
+    const roomMatch=line.match(/^(\d{3,4})$/);
+    if(roomMatch && currentFloor>0){
+      const roomNo=roomMatch[1];
+      const rfloor=parseInt(roomNo.substring(0,roomNo.length-2));
+      if(rfloor!==currentFloor){i++;continue;}
+      i++;
+      if(i>=lines.length)break;
+      // ---- 解析价格行 ----
+      let price=null, tenantName='';
+      const priceLine=lines[i];
+      // 尝试多种价格格式: ￥xxx/月(名字) 或 ¥xxx/月(名字)
+      const priceMatch=priceLine.match(/[￥¥]([\d.,]+)\/月[（(](.+)[）)]/);
+      if(priceMatch){price=parseFloat(priceMatch[1].replace(/,/g,''));tenantName=priceMatch[2].trim();i++;}
+      else if(priceLine.includes('暂未定价')){price=null;tenantName='';i++;}
+      else{console.warn('跳过非价格行:', priceLine);i++;continue;} // 容错：跳过并继续
+      // ---- 跳过房型规格行 ----
+      if(i<lines.length){
+        const specLine=lines[i];
+        if(specLine.includes('室') && (specLine.includes('m²')||specLine.includes('㎡')||specLine.includes('平'))){
+          i++; // 跳过 "1室·30m²·南" 等
+        }
+      }
+      // ---- 解析到期日或空置 ----
+      let expiryDate='', checkInDate='', vacantDays=0;
+      if(i<lines.length){
+        const dateLine=lines[i];
+        const expiryMatch=dateLine.match(/退\s*[：:]\s*(\d{4}-\d{2}-\d{2})/);
+        const vacantMatch=dateLine.match(/空置\s*(\d+)\s*天/);
+        if(expiryMatch){expiryDate=expiryMatch[1];i++;}
+        else if(vacantMatch){vacantDays=parseInt(vacantMatch[1]);expiryDate='';i++;}
+        else{console.warn('未识别到期/空置行:', dateLine);}
+      }
+      // ---- 构建记录 ----
+      const noteParts=[];
+      if(tenantName)noteParts.push('租客:'+tenantName);
+      
+      if(vacantDays>0)noteParts.push('空置'+vacantDays+'天');
+      rooms.push({
+        buildingNo,roomNo,
+        checkInDate:checkInDate||'',
+        expiryDate:expiryDate||'',
+        checkOutDate:null,
+        notes:noteParts.join(' | '),
+        isRenewal:false,isReserved:false,isLocked:false,parentRecordId:null,renewalSeq:0,
+        paymentType:'押一付三',
+        deposit:null,
+        monthlyRent:price,
+      });
+      continue;
+    }
+    i++;
+  }
+  console.log('📥 解析到房间数:', rooms.length, '前3间:', rooms.slice(0,3).map(r=>r.buildingNo+'-'+r.roomNo+' 租客:'+(r.notes||'')+' 到期:'+r.expiryDate));
+  // 统计
+  const updated=rooms.filter(r=>records.some(x=>x.buildingNo===r.buildingNo&&x.roomNo===r.roomNo)).length;
+  const added=rooms.length-updated;
+  const vacant=rooms.filter(r=>!r.expiryDate).length;
+  return {rooms,imported:rooms.length,updated,added,vacant};
+}
+
+// ==================== Toast / Confirm ====================
+function showToast(msg,type){
+  const c=document.getElementById('toastContainer'),t=document.createElement('div');
+  t.className=`toast ${type||''}`;t.innerHTML=msg;c.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(120%)';t.style.transition='0.3s ease';setTimeout(()=>t.remove(),300);},3000);
+}
+function showConfirm(msg,cb){
+  const o=document.createElement('div');o.className='modal-overlay';
+  o.innerHTML=`<div class="modal"><h3>⚠️ 确认操作</h3><p>${msg}</p><div class="btn-group"><button class="btn btn-outline cancel-btn">取消</button><button class="btn btn-primary confirm-btn">确认</button></div></div>`;
+  document.body.appendChild(o);
+  o.querySelector('.cancel-btn').addEventListener('click',()=>o.remove());
+  o.querySelector('.confirm-btn').addEventListener('click',()=>{o.remove();if(cb)cb();});
+  o.addEventListener('click',e=>{if(e.target===o)o.remove();});
+}
+function debounce(fn,d){let t;return function(...a){clearTimeout(t);t=setTimeout(()=>fn.apply(this,a),d);};}
+
+// ==================== 时钟 ====================
+function updateHeaderDate(){
+  document.getElementById('headerDate').textContent=new Date().toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+}
+updateHeaderDate();setInterval(updateHeaderDate,60000);
+
+// =============================================================================
+// ==================== 数据分析 & 招租决策引擎 ====================
+// =============================================================================
+
+function getBuildingStats() {
+  const active = getActiveRecords();
+  return BUILDING_ORDER.map(bname => {
+    const cfg = BUILDING_CONFIG[bname];
+    const occupied = active.filter(r => r.buildingNo === bname).length;
+    const vacant = cfg.totalRooms - occupied;
+    const rate = Math.round((occupied / cfg.totalRooms) * 100);
+    const expiring30 = active.filter(r => r.buildingNo === bname && getDaysLeft(r.expiryDate,null)!==null && getDaysLeft(r.expiryDate,null) <= 30 && getDaysLeft(r.expiryDate,null) >= 0).length;
+    const expiring60 = active.filter(r => r.buildingNo === bname && getDaysLeft(r.expiryDate,null)!==null && getDaysLeft(r.expiryDate,null) <= 60 && getDaysLeft(r.expiryDate,null) >= 0).length;
+    const expiring90 = active.filter(r => r.buildingNo === bname && getDaysLeft(r.expiryDate,null)!==null && getDaysLeft(r.expiryDate,null) <= 90 && getDaysLeft(r.expiryDate,null) >= 0).length;
+    const expired = active.filter(r => r.buildingNo === bname && getStatus(r)==='expired').length;
+    const remind15 = active.filter(r => r.buildingNo === bname && getDaysLeft(r.expiryDate,null)!==null && getDaysLeft(r.expiryDate,null) >= 1 && getDaysLeft(r.expiryDate,null) <= 15).length;
+    const renewals = records.filter(r => r.buildingNo === bname && r.isRenewal).length;
+    const monthlyIncome = active.filter(r => r.buildingNo === bname && r.monthlyRent).reduce((sum,r) => sum + (r.monthlyRent||0), 0);
+    return { ...cfg, name: bname, occupied, vacant, rate, expiring30, expiring60, expiring90, expired, remind15, renewals, monthlyIncome };
+  });
+}
+
+function getRecruitmentAdvice() {
+  const stats = getBuildingStats();
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // 全局建议
+  const globalVacancyRate = Math.round((stats.reduce((s,b)=>s+b.vacant,0) / stats.reduce((s,b)=>s+b.totalRooms,0)) * 100);
+  const totalExpiring30 = stats.reduce((s,b)=>s+b.expiring30,0);
+  const totalExpiring60 = stats.reduce((s,b)=>s+b.expiring60,0);
+
+  let globalLevel = 'ok';
+  let globalTitle = '✅ 供需平衡，暂不需要大规模招租';
+  let globalDetail = `当前整体入住率 ${100-globalVacancyRate}%，空置 ${stats.reduce((s,b)=>s+b.vacant,0)} 间。`;
+  let globalRooms = '';
+
+  if (globalVacancyRate > 20 || totalExpiring30 > 20) {
+    globalLevel = 'urgent';
+    globalTitle = '🚨 建议立即启动招租！';
+    globalDetail = `当前整体空置率 ${globalVacancyRate}%，30天内预计到期 ${totalExpiring30} 间。供需缺口较大，建议立即启动全渠道招租。`;
+    const urgentBuildings = stats.filter(b => b.vacant > b.totalRooms*0.15 || b.expiring30 > 5);
+    globalRooms = '重点关注楼栋：' + urgentBuildings.map(b => `${b.name}（空${b.vacant}间/${b.expiring30}间30天到期）`).join('、');
+  } else if (globalVacancyRate > 10 || totalExpiring60 > 15) {
+    globalLevel = 'watch';
+    globalTitle = '⚠️ 建议近期启动招租';
+    globalDetail = `当前空置率 ${globalVacancyRate}%，60天内预计到期 ${totalExpiring60} 间。建议密切关注并做好招租准备。`;
+    const watchBuildings = stats.filter(b => b.vacant > b.totalRooms*0.1 || b.expiring60 > 3);
+    globalRooms = '建议关注楼栋：' + watchBuildings.map(b => `${b.name}（空${b.vacant}间）`).join('、');
+  }
+
+  // 逐栋建议
+  const perBuilding = stats.map(b => {
+    const futureVacancy30 = b.vacant + b.expiring30;
+    const futureVacancyRate30 = Math.round((futureVacancy30 / b.totalRooms) * 100);
+    let level, advice;
+    if (futureVacancyRate30 > 25) { level = 'urgent'; advice = '立即招租'; }
+    else if (futureVacancyRate30 > 15 || b.expiring30 > 3) { level = 'watch'; advice = '近期招租'; }
+    else { level = 'ok'; advice = '暂不需要'; }
+    return { ...b, futureVacancy30, futureVacancyRate30, recLevel: level, recAdvice: advice };
+  });
+
+  return { globalLevel, globalTitle, globalDetail, globalRooms, perBuilding, globalVacancyRate, totalExpiring30, totalExpiring60 };
+}
+
+// ==================== 渲染 - 数据分析页 ====================
+function renderRecruitmentAdvice() {
+  const advice = getRecruitmentAdvice();
+  const cls = advice.globalLevel === 'urgent' ? 'urgent-rec' : (advice.globalLevel === 'watch' ? 'watch-rec' : 'ok-rec');
+  const icon = advice.globalLevel === 'urgent' ? '🚨' : (advice.globalLevel === 'watch' ? '⚠️' : '✅');
+  const container = document.getElementById('recruitmentAdvice');
+  container.innerHTML = `
+    <div class="section-title">🎯 招租决策建议</div>
+    <div class="rec-card ${cls}">
+      <div class="rec-icon">${icon}</div>
+      <div class="rec-content">
+        <div class="rec-title">${advice.globalTitle}</div>
+        <div class="rec-detail">${advice.globalDetail}</div>
+        ${advice.globalRooms ? `<div class="rec-rooms">${advice.globalRooms}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderBuildingGrid() {
+  const stats = getBuildingStats();
+  const advice = getRecruitmentAdvice();
+  const grid = document.getElementById('buildingGrid');
+  grid.innerHTML = stats.map(b => {
+    const pb = advice.perBuilding.find(p => p.name === b.name);
+    let recBadge = '';
+    if (pb.recLevel === 'urgent') recBadge = '<span class="badge badge-recruit">需立即招租</span>';
+    else if (pb.recLevel === 'watch') recBadge = '<span class="badge badge-watch">密切关注</span>';
+    else recBadge = '<span class="badge badge-ok">暂不需要</span>';
+
+    const rateColor = b.rate >= 85 ? 'high' : (b.rate >= 60 ? 'medium' : 'low');
+    return `<div class="building-card">
+      <div class="bc-header"><span class="bc-name">${b.name}</span><span class="bc-total">${b.totalRooms}间 / ${b.housingFloors}层 / ${escapeHtml(b.roomType||'')}</span></div>
+      <div class="bc-stats">
+        <div class="bc-stat occupied"><div class="bc-val">${b.occupied}</div><div class="bc-lbl">已入住</div></div>
+        <div class="bc-stat vacant"><div class="bc-val" style="color:${b.vacant>5?'var(--danger)':'var(--text-light)'}">${b.vacant}</div><div class="bc-lbl">空置</div></div>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill ${rateColor}" style="width:${b.rate}%"></div></div>
+      <div class="bc-rate" style="color:${b.rate>=85?'var(--success)':(b.rate>=60?'var(--warning)':'var(--danger)')}">入住率 ${b.rate}%</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-light);display:flex;justify-content:space-between;flex-wrap:wrap">
+        <span>⏰ 30天到期: <strong style="color:${b.expiring30>3?'var(--danger)':'var(--text)'}">${b.expiring30}</strong></span>
+        <span>🔔 15天内: <strong style="color:${b.remind15>0?'var(--danger)':'var(--text)'}">${b.remind15}</strong></span>
+        <span>⚠️ 超期: <strong style="color:${b.expired>0?'var(--danger)':'var(--text)'}">${b.expired}</strong></span>
+      </div>
+      <div style="margin-top:6px;text-align:center">${recBadge}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderLedger() {
+  const stats = getBuildingStats();
+  const tbody = document.getElementById('ledgerBody');
+  tbody.innerHTML = stats.map(b => `
+    <tr>
+      <td><strong>${b.name}</strong></td>
+      <td>${b.totalRooms}</td>
+      <td style="color:var(--success)">${b.occupied}</td>
+      <td style="color:${b.vacant>5?'var(--danger)':'var(--text-light)'}">${b.vacant}</td>
+      <td><strong style="color:${b.rate>=85?'var(--success)':(b.rate>=60?'var(--warning)':'var(--danger)')}">${b.rate}%</strong></td>
+      <td>${b.renewals}</td>
+      <td style="color:${b.remind15>0?'var(--danger)':'var(--text-light)'}">${b.remind15}</td>
+      <td style="color:${b.expired>0?'var(--danger)':'var(--text-light)'}">${b.expired}</td>
+      <td>¥${b.monthlyIncome.toLocaleString()}</td>
+    </tr>`).join('') + `
+    <tr style="font-weight:700;background:#f8f9fb">
+      <td>合计</td>
+      <td>${stats.reduce((s,b)=>s+b.totalRooms,0)}</td>
+      <td style="color:var(--success)">${stats.reduce((s,b)=>s+b.occupied,0)}</td>
+      <td>${stats.reduce((s,b)=>s+b.vacant,0)}</td>
+      <td>${Math.round(stats.reduce((s,b)=>s+b.occupied,0)/stats.reduce((s,b)=>s+b.totalRooms,0)*100)}%</td>
+      <td>${stats.reduce((s,b)=>s+b.renewals,0)}</td>
+      <td>${stats.reduce((s,b)=>s+b.remind15,0)}</td>
+      <td>${stats.reduce((s,b)=>s+b.expired,0)}</td>
+      <td>¥${stats.reduce((s,b)=>s+b.monthlyIncome,0).toLocaleString()}</td>
+    </tr>`;
+}
+
+function renderPredictionTable() {
+  const stats = getBuildingStats();
+  const totalRooms = stats.reduce((s,b)=>s+b.totalRooms,0);
+  const totalOccupied = stats.reduce((s,b)=>s+b.occupied,0);
+  const totalVacant = stats.reduce((s,b)=>s+b.vacant,0);
+
+  const expiring30 = stats.reduce((s,b)=>s+b.expiring30,0);
+  const expiring60 = stats.reduce((s,b)=>s+b.expiring60,0);
+  const expiring90 = stats.reduce((s,b)=>s+b.expiring90,0);
+
+  const periods = [
+    { label: '当前', days: 0, expiring: 0, vacantNow: totalVacant },
+    { label: '30天内', days: 30, expiring: expiring30, vacantNow: totalVacant },
+    { label: '60天内', days: 60, expiring: expiring60, vacantNow: totalVacant },
+    { label: '90天内', days: 90, expiring: expiring90, vacantNow: totalVacant },
+  ];
+
+  const tbody = document.getElementById('predictionBody');
+  tbody.innerHTML = periods.map((p, i) => {
+    const predictedVacant = p.expiring + totalVacant; // simplified: current vacant + expiring
+    const predictedRate = Math.round(((totalRooms - predictedVacant) / totalRooms) * 100);
+    const suggestedRecruit = Math.max(0, Math.round(predictedVacant * 0.8)); // suggest recruit 80% of vacancies
+    let urgency = '正常', badgeClass = 'badge-ok', action = '维持现状';
+    if (predictedVacant > totalRooms * 0.2) { urgency = '🔴 紧急'; badgeClass = 'badge-recruit'; action = '立即全渠道招租'; }
+    else if (predictedVacant > totalRooms * 0.1 || p.expiring > 15) { urgency = '🟡 关注'; badgeClass = 'badge-watch'; action = '启动招租准备'; }
+    else if (p.expiring > 5) { urgency = '🟢 正常'; badgeClass = 'badge-ok'; action = '正常维护'; }
+
+    return `<tr class="${i===0?'':'highlight-row'}">
+      <td><strong>${p.label}</strong></td>
+      <td>${p.expiring} 间</td>
+      <td>${predictedRate}%（预计）</td>
+      <td><strong>${suggestedRecruit} 间</strong></td>
+      <td><span class="badge ${badgeClass}">${urgency}</span></td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ==================== 图表 - 数据分析页 ====================
+let analyticsCharts = [];
+function destroyAnalyticsCharts() { analyticsCharts.forEach(c => { if (c) c.destroy(); }); analyticsCharts = []; }
+
+function renderAnalyticsCharts() {
+  try { destroyAnalyticsCharts(); } catch(e) { analyticsCharts = []; }
+  if(records.length===0) return;
+  try {
+  const colors = ['#4f6ef7','#27ae60','#f39c12','#e74c3c','#8e44ad','#1abc9c','#e67e22'];
+
+  // Chart 1: 各楼栋入住率对比
+  const c1 = document.getElementById('chartOccupancy').getContext('2d');
+  analyticsCharts.push(new Chart(c1, {
+    type: 'bar',
+    data: {
+      labels: stats.map(b => b.name),
+      datasets: [
+        { label: '已入住', data: stats.map(b => b.occupied), backgroundColor: '#27ae60aa', borderColor: '#27ae60', borderWidth: 2, borderRadius: 6 },
+        { label: '空置', data: stats.map(b => b.vacant), backgroundColor: '#e74c3caa', borderColor: '#e74c3c', borderWidth: 2, borderRadius: 6 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 20, precision: 0 } } }
+    }
+  }));
+
+  // Chart 2: 未来90天预计空出房源（按月拆分）
+  const months2 = [];
+  const today2 = new Date(); today2.setDate(1); today2.setHours(0,0,0,0);
+  for (let i = 0; i < 4; i++) {
+    const d = new Date(today2.getFullYear(), today2.getMonth() + i, 1);
+    months2.push({ label: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, year: d.getFullYear(), month: d.getMonth() });
+  }
+  const vacancyData = months2.map(m => {
+    return records.filter(r => {
+      if (r.checkOutDate || !r.expiryDate) return false;
+      const ex = new Date(r.expiryDate);
+      return ex.getFullYear() === m.year && ex.getMonth() === m.month;
+    }).length;
+  });
+  const cumVacancy = [];
+  let cum = stats.reduce((s,b)=>s+b.vacant,0);
+  vacancyData.forEach(v => { cum += v; cumVacancy.push(cum); });
+
+  const c2 = document.getElementById('chartVacancy').getContext('2d');
+  analyticsCharts.push(new Chart(c2, {
+    type: 'line',
+    data: {
+      labels: months2.map(m => m.label),
+      datasets: [
+        { label: '当月到期', data: vacancyData, borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 5 },
+        { label: '累计空置', data: cumVacancy, borderColor: '#636e72', borderDash: [5,5], fill: false, tension: 0.4, borderWidth: 2, pointRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 5, precision: 0 } } }
+    }
+  }));
+
+  // Chart 3: 月度入住/退房趋势（基于历史数据）
+  const last12Months = [];
+  const d3 = new Date(); d3.setDate(1); d3.setHours(0,0,0,0);
+  for (let i = 11; i >= 0; i--) {
+    const dt = new Date(d3.getFullYear(), d3.getMonth() - i, 1);
+    last12Months.push({ label: `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`, year: dt.getFullYear(), month: dt.getMonth() });
+  }
+  const checkInsByMonth = last12Months.map(m => records.filter(r => {
+    if (!r.checkInDate) return false; const ci = new Date(r.checkInDate); return ci.getFullYear() === m.year && ci.getMonth() === m.month;
+  }).length);
+  const checkOutsByMonth = last12Months.map(m => records.filter(r => {
+    if (!r.checkOutDate) return false; const co = new Date(r.checkOutDate); return co.getFullYear() === m.year && co.getMonth() === m.month;
+  }).length);
+
+  const c3 = document.getElementById('chartTrend').getContext('2d');
+  analyticsCharts.push(new Chart(c3, {
+    type: 'line',
+    data: {
+      labels: last12Months.map(m => m.label),
+      datasets: [
+        { label: '新入住', data: checkInsByMonth, borderColor: '#27ae60', backgroundColor: 'rgba(39,174,96,0.08)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4 },
+        { label: '退房', data: checkOutsByMonth, borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.08)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 2, precision: 0 } } }
+    }
+  }));
+
+  // Chart 4: 供需缺口预测（累计）
+  const c4 = document.getElementById('chartGap').getContext('2d');
+  const totalRms = stats.reduce((s,b)=>s+b.totalRooms,0);
+  const totalOcc = stats.reduce((s,b)=>s+b.occupied,0);
+  const gapLabels = ['当前', '30天后', '60天后', '90天后'];
+  const gapSupply = [totalOcc, totalOcc - expiring30/3, totalOcc - expiring60/3, totalOcc - expiring90/3].map(v => Math.max(0, Math.round(v)));
+  const gapDemand = [totalRms, totalRms, totalRms, totalRms];
+
+  analyticsCharts.push(new Chart(c4, {
+    type: 'bar',
+    data: {
+      labels: gapLabels,
+      datasets: [
+        { label: '预计在住', data: gapSupply, backgroundColor: '#27ae60aa', borderColor: '#27ae60', borderWidth: 2, borderRadius: 6 },
+        { label: '总房源', data: gapDemand, backgroundColor: '#e8ecf1', borderColor: '#d0d5dd', borderWidth: 2, borderRadius: 6, type: 'line', fill: false, pointRadius: 0, borderDash: [5,5] },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 50, precision: 0 } } }
+    }
+  }));
+  } catch(e) {
+    console.warn('分析图表渲染失败:', e.message);
+    analyticsCharts = [];
+  }
+}
+
+function renderAnalyticsAll() {
+  renderRecruitmentAdvice();
+  renderBuildingGrid();
+  renderLedger();
+  renderPredictionTable();
+  renderAnalyticsCharts();
+}
+
+// ==================== 标签页切换 ====================
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+  if (tabId === 'tab-analytics') {
+    renderAnalyticsAll();
+  } else {
+    renderManageAll();
+  }
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// ==================== 全局渲染 ====================
+function renderAll() {
+  try {
+    const activeTab = document.querySelector('.tab-panel.active');
+    if (activeTab && activeTab.id === 'tab-analytics') {
+      renderAnalyticsAll();
+    } else {
+      renderManageAll();
+    }
+  } catch(e) {
+    console.error('renderAll 异常:', e.message, e.stack);
+    // 至少保证表格和统计能刷新
+    try { renderStats(); renderTable(); } catch(e2) {}
+  }
+}
+
+// ==================== 房间初始化 ====================
+// 根据楼栋配置生成所有房间号（一楼无住户，从二楼开始）
+function generateAllRooms() {
+  const specs = [
+    { name:'5幢',  roomsPerFloor:14, startFloor:2, endFloor:19 },
+    { name:'6幢',  roomsPerFloor:14, startFloor:2, endFloor:19 },
+    { name:'12幢', roomsPerFloor:14, startFloor:2, endFloor:19 },
+    { name:'16幢', roomsPerFloor:14, startFloor:2, endFloor:13 },
+    { name:'21幢', roomsPerFloor:6,  startFloor:2, endFloor:19 },
+    { name:'26幢', roomsPerFloor:8,  startFloor:2, endFloor:19 },
+    { name:'27幢', roomsPerFloor:6,  startFloor:2, endFloor:19 },
+  ];
+  const all = [];
+  specs.forEach(b => {
+    const cfg = BUILDING_CONFIG[b.name];
+    const typeNote = cfg ? cfg.roomType : '';
+    for (let f = b.startFloor; f <= b.endFloor; f++) {
+      for (let r = 1; r <= b.roomsPerFloor; r++) {
+        all.push({
+          id: generateId(),
+          buildingNo: b.name,
+          roomNo: String(f) + String(r).padStart(2, '0'),
+          checkInDate: '',
+          expiryDate: '',
+          checkOutDate: null,
+          notes: '',
+          isRenewal: false,
+          isReserved: false,
+          isLocked: false,
+          parentRecordId: null,
+          renewalSeq: 0,
+          paymentType: typeNote.includes('套间') ? '押一付三' : '押一付三',
+          deposit: null,
+          monthlyRent: null,
+        });
+      }
+    }
+  });
+  return all;
+}
+
+// ==================== 初始化 ====================
+function init() {
+  loadRecords(); // 内部自动处理版本升级和房间初始化
+  // 自动导入嵌入式楼栋数据（rental-data.js）
+  applyEmbeddedData();
+  document.getElementById('checkInDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('expiryDate').value = new Date(Date.now() + 90*24*60*60*1000).toISOString().split('T')[0];
+  renderManageAll();
+}
+
+function applyEmbeddedData() {
+  if (typeof EMBEDDED_BUILDING_DATA === 'undefined') return;
+  const buildings = Object.keys(EMBEDDED_BUILDING_DATA);
+  if (buildings.length === 0) {
+    // 嵌入数据为空，清除旧数据
+    localStorage.removeItem('rental_embedded_imported');
+    localStorage.removeItem('rental_records_v2');
+    localStorage.removeItem('rental_db_version');
+    records = [];
+    saveRecords();
+    console.log('🧹 嵌入数据为空，已清除本地缓存');
+    return;
+  }
+  // 用数据指纹判断是否需要重新导入（编辑 rental-data.js 后自动生效）
+  const importMark = localStorage.getItem('rental_embedded_imported');
+  const dataFingerprint = buildings.sort().join(',') + '|v=' + JSON.stringify(EMBEDDED_BUILDING_DATA).length;
+  if (importMark === dataFingerprint) { console.log('📥 嵌入式数据未变化，跳过'); return; }
+
+  console.log('📥 开始导入嵌入式楼栋数据:', buildings.join(', '));
+  let totalApplied = 0;
+  buildings.forEach(buildingNo => {
+    const rawText = EMBEDDED_BUILDING_DATA[buildingNo];
+    if (!rawText) return;
+    const result = parseImportData(rawText, buildingNo);
+    console.log('  ' + buildingNo + ': 解析 ' + result.imported + ' 间');
+    if (result.imported === 0) return;
+    const importMap = new Map(result.rooms.map(r => [r.buildingNo+'|'+r.roomNo, r]));
+    records.forEach((r, i) => {
+      const key = r.buildingNo+'|'+r.roomNo;
+      if (importMap.has(key)) {
+        records[i] = { ...r, ...importMap.get(key), id: r.id };
+        importMap.delete(key);
+        totalApplied++;
+      }
+    });
+    importMap.forEach(r => { records.push({...r, id: generateId()}); });
+  });
+  if (totalApplied > 0) {
+    saveRecords();
+    localStorage.setItem('rental_embedded_imported', dataFingerprint);
+    console.log('✅ 嵌入式数据导入完成，应用 ' + totalApplied + ' 间');
+  }
+}
+init();
+
+console.log('🏠 租房退房登记统计系统 v3 — 数据分析版');
+console.log('📊 新增：楼栋全景面板 | 招租决策引擎 | 台账汇总 | 供需预测 | 趋势分析');
+console.log('🏢 管理楼栋：5幢/6幢/12幢（各252间）| 16幢（168间）| 21幢/27幢（各108间）| 26幢（144间）');
+</script>
+</body>
+</html>
