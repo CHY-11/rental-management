@@ -285,6 +285,28 @@ tbody tr.row-renewal{border-left:3px solid var(--info)}
 
 /* Tooltip for analytics */
 .has-tooltip { cursor: help; border-bottom: 1px dotted var(--text-light); }
+
+/* ======================== SYNC INDICATOR ======================== */
+.sync-wrap { position: relative; display: flex; align-items: center; gap: 8px; }
+.sync-dot { display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 4px 8px; border-radius: 16px; font-size: 12px; transition: var(--transition); }
+.sync-dot:hover { background: rgba(255,255,255,0.12); }
+.sync-dot .sync-icon { font-size: 14px; }
+.sync-dot .sync-label { opacity: 0.8; }
+.sync-panel {
+  position: absolute; top: 100%; right: 0; margin-top: 8px;
+  background: #fff; border-radius: var(--radius); box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+  padding: 18px; width: 320px; z-index: 300; display: none; color: var(--text);
+  border: 1px solid var(--border);
+}
+.sync-panel.show { display: block; animation: fadeIn 0.2s ease; }
+.sync-panel h4 { font-size: 14px; margin-bottom: 4px; }
+.sync-panel .sync-desc { font-size: 11px; color: var(--text-light); margin-bottom: 12px; line-height: 1.6; }
+.sync-panel input { width: 100%; padding: 7px 10px; border: 2px solid var(--border); border-radius: 6px; font-size: 12px; font-family: monospace; }
+.sync-panel input:focus { outline: none; border-color: var(--primary); }
+.sync-panel .sync-status-row { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; }
+.sync-panel .sync-actions { display: flex; gap: 6px; margin-top: 8px; }
+@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+.sync-spin { animation: spin 1.5s linear infinite; }
 </style>
 </head>
 <body>
@@ -292,7 +314,29 @@ tbody tr.row-renewal{border-left:3px solid var(--info)}
 <!-- Header -->
 <header class="header">
   <h1><span class="icon">🏠</span>租房退房登记统计管理系统</h1>
-  <div class="date-display"><span class="live-dot"></span><span id="headerDate"></span></div>
+  <div class="date-display">
+    <div class="sync-wrap">
+      <span class="sync-dot" id="syncDot" onclick="toggleSyncSettings()" title="多设备同步设置">
+        <span class="sync-icon" id="syncIcon">⚙️</span>
+        <span class="sync-label" id="syncLabel">未配置</span>
+      </span>
+      <div class="sync-panel" id="syncPanel">
+        <h4>🔄 多设备数据同步</h4>
+        <p class="sync-desc">配置 GitHub Token 后，所有设备的数据将自动同步。Token 仅存在本机浏览器中。</p>
+        <input type="password" id="syncTokenInput" placeholder="粘贴 GitHub Personal Access Token...">
+        <div class="sync-actions">
+          <button class="btn btn-primary btn-sm" onclick="handleTokenSave()">💾 保存</button>
+          <button class="btn btn-outline btn-sm" onclick="handleTokenClear()">清除</button>
+          <button class="btn btn-outline btn-sm" onclick="handleForceSync()">🔄 手动同步</button>
+        </div>
+        <div class="sync-status-row" id="syncStatusRow">
+          <span id="syncStatusIcon">⚙️</span>
+          <span id="syncStatusText">尚未配置 Token</span>
+        </div>
+      </div>
+    </div>
+    <span class="live-dot"></span><span id="headerDate"></span>
+  </div>
 </header>
 
 <!-- Tab Navigation -->
@@ -527,7 +571,329 @@ function loadRecords() {
     console.log('✅ 房间数据已更新（版本3），总计：' + records.length + ' 间');
   }
 }
-function saveRecords() { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); }
+function saveRecords() { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); scheduleSyncToGitHub(); }
+
+// ==================== GitHub 多设备同步引擎 ====================
+const SYNC_VERSION_KEY = 'rental_sync_version';
+const SYNC_TOKEN_KEY = 'rental_gh_token';
+
+function getGitHubConfig() {
+  const token = localStorage.getItem(SYNC_TOKEN_KEY) || '';
+  return {
+    token,
+    owner: 'CHY-11',
+    repo: 'rental-management',
+    branch: 'main',
+    apiBase: 'https://api.github.com',
+    pagesBase: 'https://chy-11.github.io/rental-management',
+    configured: !!token,
+  };
+}
+
+function toBase64(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function fromBase64(b64) {
+  return decodeURIComponent(escape(atob(b64)));
+}
+
+async function githubGet() {
+  const cfg = getGitHubConfig();
+  const url = `${cfg.pagesBase}/data.json?_t=${Date.now()}`;
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return null;
+    return res.json();
+  } catch (e) {
+    console.warn('🌐 GitHub Pages 拉取失败:', e.message);
+    return null;
+  }
+}
+
+async function githubGetWithSha() {
+  const cfg = getGitHubConfig();
+  if (!cfg.token) return null;
+  const url = `${cfg.apiBase}/repos/${cfg.owner}/${cfg.repo}/contents/data.json`;
+  try {
+    const res = await fetch(url, {
+      headers: { 'Authorization': `token ${cfg.token}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return {
+      sha: json.sha,
+      data: JSON.parse(fromBase64(json.content)),
+    };
+  } catch (e) {
+    console.warn('🌐 GitHub API 读取失败:', e.message);
+    return null;
+  }
+}
+
+async function githubPut(data, sha) {
+  const cfg = getGitHubConfig();
+  if (!cfg.token) return { success: false, error: 'no_token' };
+  const url = `${cfg.apiBase}/repos/${cfg.owner}/${cfg.repo}/contents/data.json`;
+  const body = {
+    message: `sync: v${data.version} @ ${data.updatedAt}`,
+    content: toBase64(JSON.stringify(data, null, 2)),
+    branch: cfg.branch,
+  };
+  if (sha) body.sha = sha;
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${cfg.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 409) return { success: false, error: 'conflict' };
+    if (res.status === 401) {
+      localStorage.removeItem(SYNC_TOKEN_KEY);
+      updateSyncIndicator();
+      return { success: false, error: 'unauthorized' };
+    }
+    if (!res.ok) return { success: false, error: 'http_' + res.status };
+    const json = await res.json();
+    return { success: true, newSha: json.content.sha };
+  } catch (e) {
+    console.warn('🌐 GitHub API 推送失败:', e.message);
+    return { success: false, error: 'network' };
+  }
+}
+
+async function syncToGitHub() {
+  const cfg = getGitHubConfig();
+  if (!cfg.token) { updateSyncIndicator(); return false; }
+
+  updateSyncIndicator('syncing');
+
+  // Step 1: 读取远端 SHA 和数据
+  const remote = await githubGetWithSha();
+
+  // Step 2: 确定新版本号
+  const localVersion = parseInt(localStorage.getItem(SYNC_VERSION_KEY) || '0');
+  const newVersion = remote ? Math.max(remote.data.version, localVersion) + 1 : (localVersion + 1);
+
+  // Step 3: 合并数据 — 本地记录优先（同 ID），远端独有的保留
+  let mergedRecords;
+  if (remote && remote.data.records) {
+    const mergedMap = new Map(remote.data.records.map(r => [r.id, r]));
+    records.forEach(r => { mergedMap.set(r.id, r); }); // 本地覆盖远端同 ID
+    mergedRecords = [...mergedMap.values()];
+  } else {
+    mergedRecords = records;
+  }
+
+  // Step 4: 构建并推送
+  const payload = {
+    version: newVersion,
+    updatedAt: new Date().toISOString(),
+    records: mergedRecords,
+  };
+
+  const sha = remote ? remote.sha : null;
+  let result = await githubPut(payload, sha);
+
+  // Step 5: 冲突重试
+  if (!result.success && result.error === 'conflict') {
+    console.log('🔄 冲突重试...');
+    const retryRemote = await githubGetWithSha();
+    if (retryRemote) {
+      const retryVersion = Math.max(retryRemote.data.version, localVersion) + 1;
+      const retryMap = new Map(retryRemote.data.records.map(r => [r.id, r]));
+      records.forEach(r => { retryMap.set(r.id, r); });
+      const retryPayload = {
+        version: retryVersion,
+        updatedAt: new Date().toISOString(),
+        records: [...retryMap.values()],
+      };
+      result = await githubPut(retryPayload, retryRemote.sha);
+    }
+  }
+
+  if (result.success) {
+    records = payload.records;
+    saveRecordsLocal();
+    localStorage.setItem(SYNC_VERSION_KEY, String(payload.version));
+    updateSyncIndicator('synced');
+    return true;
+  } else if (result.error === 'unauthorized') {
+    showToast('Token 无效，已清除。请重新配置 ⚠️', 'error');
+    updateSyncIndicator();
+    return false;
+  } else {
+    updateSyncIndicator('pending_push');
+    return false;
+  }
+}
+
+function saveRecordsLocal() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+}
+
+let syncDebounceTimer = null;
+function scheduleSyncToGitHub() {
+  clearTimeout(syncDebounceTimer);
+  syncDebounceTimer = setTimeout(() => {
+    syncToGitHub().then(success => {
+      if (!success) console.log('📡 后台同步未完成，将在下次保存时重试');
+    });
+  }, 2000);
+}
+
+async function syncFromGitHub() {
+  try {
+    const remoteData = await githubGet();
+    if (!remoteData || !remoteData.records) {
+      // 没有远端数据 — 如果有 Token 且本地有数据，推送上去
+      const cfg = getGitHubConfig();
+      const localVersion = parseInt(localStorage.getItem(SYNC_VERSION_KEY) || '0');
+      if (cfg.token && records.length > 0 && localVersion === 0) {
+        // 首次：本地数据上传为 v1
+        const payload = { version: 1, updatedAt: new Date().toISOString(), records };
+        const result = await githubPut(payload, null);
+        if (result.success) {
+          localStorage.setItem(SYNC_VERSION_KEY, '1');
+          updateSyncIndicator('synced');
+          return 'pushed_first';
+        }
+      }
+      updateSyncIndicator();
+      return 'no_remote';
+    }
+
+    const localVersion = parseInt(localStorage.getItem(SYNC_VERSION_KEY) || '0');
+    const remoteVersion = remoteData.version || 0;
+
+    if (remoteVersion > localVersion) {
+      // 远端更新 → 拉取
+      records = remoteData.records.map(r => ({
+        id: r.id || generateId(), buildingNo: r.buildingNo || '', roomNo: r.roomNo || '',
+        checkInDate: r.checkInDate || '', expiryDate: r.expiryDate || '',
+        checkOutDate: r.checkOutDate || null, notes: r.notes || '',
+        isRenewal: r.isRenewal || false, isReserved: r.isReserved || false,
+        isLocked: r.isLocked || false,
+        parentRecordId: r.parentRecordId || null,
+        renewalSeq: r.renewalSeq || 0, paymentType: r.paymentType || '押一付三',
+        deposit: r.deposit || null, monthlyRent: r.monthlyRent || null,
+      }));
+      saveRecordsLocal();
+      localStorage.setItem(SYNC_VERSION_KEY, String(remoteVersion));
+      renderAll();
+      updateSyncIndicator('synced');
+      showToast(`📥 已从云端同步 ${remoteData.records.length} 条记录`, 'success');
+      return 'pulled';
+    } else if (remoteVersion < localVersion) {
+      // 本地更新 → 推送
+      const cfg = getGitHubConfig();
+      if (cfg.token) {
+        syncToGitHub();
+      }
+      updateSyncIndicator('pending_push');
+      return 'local_newer';
+    } else {
+      updateSyncIndicator('synced');
+      return 'in_sync';
+    }
+  } catch (e) {
+    console.warn('🌐 同步检查失败:', e.message);
+    updateSyncIndicator('error');
+    return 'error';
+  }
+}
+
+function updateSyncIndicator(state) {
+  const iconEl = document.getElementById('syncIcon');
+  const labelEl = document.getElementById('syncLabel');
+  const statusIconEl = document.getElementById('syncStatusIcon');
+  const statusTextEl = document.getElementById('syncStatusText');
+  const cfg = getGitHubConfig();
+
+  if (!state) {
+    state = cfg.configured ? 'synced' : 'unconfigured';
+  }
+
+  const states = {
+    unconfigured: { icon: '⚙️', label: '未配置', statusIcon: '⚙️', statusText: '尚未配置 GitHub Token。配置后可多设备自动同步。', color: '#95a5a6' },
+    synced:       { icon: '✅', label: '已同步', statusIcon: '✅', statusText: '数据与云端一致', color: '#27ae60' },
+    syncing:      { icon: '🔄', label: '同步中', statusIcon: '🔄', statusText: '正在同步...', color: '#3498db' },
+    pending_push: { icon: '⬆️', label: '待推送', statusIcon: '⬆️', statusText: '本地有未同步的更改', color: '#f39c12' },
+    error:        { icon: '❌', label: '同步失败', statusIcon: '❌', statusText: '上次同步失败，将在下次保存时重试', color: '#e74c3c' },
+    cloud_off:    { icon: '☁️', label: '无云端', statusIcon: '☁️', statusText: '云端暂无数据，首次保存后将创建', color: '#95a5a6' },
+  };
+  const s = states[state] || states.unconfigured;
+
+  if (iconEl) { iconEl.textContent = s.icon; iconEl.style.color = s.color; }
+  if (labelEl) labelEl.textContent = s.label;
+  if (statusIconEl) statusIconEl.textContent = s.statusIcon;
+  if (statusTextEl) statusTextEl.textContent = s.statusText;
+
+  // 同步中动画
+  const icon = document.getElementById('syncIcon');
+  if (icon) {
+    icon.classList.toggle('sync-spin', state === 'syncing');
+  }
+}
+
+function toggleSyncSettings() {
+  const panel = document.getElementById('syncPanel');
+  const tokenInput = document.getElementById('syncTokenInput');
+  const cfg = getGitHubConfig();
+  if (panel.classList.contains('show')) {
+    panel.classList.remove('show');
+  } else {
+    if (cfg.token) tokenInput.value = cfg.token;
+    updateSyncIndicator();
+    panel.classList.add('show');
+  }
+}
+
+function handleTokenSave() {
+  const input = document.getElementById('syncTokenInput');
+  const token = input.value.trim();
+  if (!token) { showToast('请输入 GitHub Token', 'error'); return; }
+  // 验证 Token 前缀
+  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+    showToast('Token 格式不正确，应以 ghp_ 或 github_pat_ 开头', 'error');
+    return;
+  }
+  localStorage.setItem(SYNC_TOKEN_KEY, token);
+  document.getElementById('syncPanel').classList.remove('show');
+  updateSyncIndicator('synced');
+  showToast('Token 已保存 ✅ 数据将自动同步', 'success');
+  // 触发首次同步
+  syncFromGitHub();
+}
+
+function handleTokenClear() {
+  localStorage.removeItem(SYNC_TOKEN_KEY);
+  document.getElementById('syncTokenInput').value = '';
+  updateSyncIndicator();
+  showToast('Token 已清除，将恢复本地模式', 'success');
+}
+
+function handleForceSync() {
+  const cfg = getGitHubConfig();
+  if (!cfg.token) { showToast('请先配置 GitHub Token', 'error'); return; }
+  updateSyncIndicator('syncing');
+  syncToGitHub().then(success => {
+    if (success) showToast('同步完成 ✅', 'success');
+    else showToast('同步失败，请检查网络或 Token', 'error');
+  });
+}
+
+// 点击面板外部关闭
+document.addEventListener('click', function(e) {
+  const panel = document.getElementById('syncPanel');
+  const dot = document.getElementById('syncDot');
+  if (panel && panel.classList.contains('show') && !panel.contains(e.target) && e.target !== dot && !dot.contains(e.target)) {
+    panel.classList.remove('show');
+  }
+});
 function generateId() { return 'R' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2,6).toUpperCase(); }
 
 // ==================== 业务逻辑 ====================
@@ -1541,13 +1907,21 @@ function generateAllRooms() {
 }
 
 // ==================== 初始化 ====================
-function init() {
+async function init() {
   loadRecords(); // 内部自动处理版本升级和房间初始化
   // 自动导入嵌入式楼栋数据（rental-data.js）
   applyEmbeddedData();
   document.getElementById('checkInDate').value = new Date().toISOString().split('T')[0];
   document.getElementById('expiryDate').value = new Date(Date.now() + 90*24*60*60*1000).toISOString().split('T')[0];
   renderManageAll();
+  // 初始化同步状态
+  updateSyncIndicator();
+  // 后台异步从 GitHub 同步数据（不阻塞页面）
+  syncFromGitHub().then(result => {
+    if (result === 'pulled') {
+      showToast('📥 数据已从云端同步', 'success');
+    }
+  });
 }
 
 function applyEmbeddedData() {
