@@ -1710,6 +1710,10 @@ function renderAnalyticsCharts() {
   if(records.length===0) return;
   try {
   const colors = ['#4f6ef7','#27ae60','#f39c12','#e74c3c','#8e44ad','#1abc9c','#e67e22'];
+  const stats = getBuildingStats();
+  const expiring30 = stats.reduce((s, b) => s + b.expiring30, 0);
+  const expiring60 = stats.reduce((s, b) => s + b.expiring60, 0);
+  const expiring90 = stats.reduce((s, b) => s + b.expiring90, 0);
 
   // Chart 1: 各楼栋入住率对比
   const c1 = document.getElementById('chartOccupancy').getContext('2d');
@@ -1775,7 +1779,15 @@ function renderAnalyticsCharts() {
     if (!r.checkInDate) return false; const ci = new Date(r.checkInDate); return ci.getFullYear() === m.year && ci.getMonth() === m.month;
   }).length);
   const checkOutsByMonth = last12Months.map(m => records.filter(r => {
-    if (!r.checkOutDate) return false; const co = new Date(r.checkOutDate); return co.getFullYear() === m.year && co.getMonth() === m.month;
+    // 退房日期来自两个源头：1) checkOutDate 字段（表单退房）2) 备注中的"退租日:YYYY-MM-DD"（checkOut 函数）
+    let coDate = null;
+    if (r.checkOutDate) { coDate = new Date(r.checkOutDate); }
+    else if (r.notes && r.notes.includes('退租日:')) {
+      const m2 = r.notes.match(/退租日[：:](\d{4}-\d{2}-\d{2})/);
+      if (m2) coDate = new Date(m2[1]);
+    }
+    if (!coDate) return false;
+    return coDate.getFullYear() === m.year && coDate.getMonth() === m.month;
   }).length);
 
   const c3 = document.getElementById('chartTrend').getContext('2d');
