@@ -185,7 +185,7 @@ tbody tr.row-renewal{border-left:3px solid var(--info)}
 .charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px}
 .chart-card{background:var(--card-bg);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border);padding:18px}
 .chart-card .chart-title{font-weight:600;font-size:14px;margin-bottom:14px;color:var(--text)}
-.chart-card canvas{max-height:280px}
+.chart-card canvas{max-height:280px;min-height:200px;width:100%!important}
 
 /* Toast */
 .toast-container{position:fixed;top:80px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
@@ -1841,7 +1841,12 @@ function renderAnalyticsAll() {
   renderBuildingGrid();
   renderLedger();
   renderPredictionTable();
-  renderAnalyticsCharts();
+  // 用 requestAnimationFrame 确保 canvas 在布局完成后再渲染图表
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      renderAnalyticsCharts();
+    });
+  });
 }
 
 // ==================== 标签页切换 ====================
